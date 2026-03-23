@@ -5,14 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fastify_1 = __importDefault(require("fastify"));
 const cors_1 = __importDefault(require("@fastify/cors"));
-const jwt_1 = __importDefault(require("@fastify/jwt"));
 const multipart_1 = __importDefault(require("@fastify/multipart"));
 const rate_limit_1 = __importDefault(require("@fastify/rate-limit"));
 require("dotenv/config");
+const supabase_js_1 = require("@supabase/supabase-js");
 const tasks_1 = require("./routes/tasks");
 const history_1 = require("./routes/history");
 const calendar_1 = require("./routes/calendar");
 const app = (0, fastify_1.default)({ logger: true });
+const supabaseAuth = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 async function main() {
     await app.register(cors_1.default, {
         origin: [
@@ -22,16 +23,23 @@ async function main() {
         ],
         credentials: true,
     });
-    await app.register(jwt_1.default, { secret: process.env.JWT_SECRET });
     await app.register(multipart_1.default, {
         limits: { fileSize: 25 * 1024 * 1024 }
     });
     await app.register(rate_limit_1.default, {
         max: 100, timeWindow: '1 minute'
     });
+    // Middleware que verifica el JWT de Supabase
     app.decorate('authenticate', async (request, reply) => {
         try {
-            await request.jwtVerify();
+            const authHeader = request.headers.authorization;
+            if (!authHeader)
+                return reply.code(401).send({ error: 'No autorizado' });
+            const token = authHeader.replace('Bearer ', '');
+            const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+            if (error || !user)
+                return reply.code(401).send({ error: 'No autorizado' });
+            request.user = { id: user.id, email: user.email };
         }
         catch {
             reply.code(401).send({ error: 'No autorizado' });
