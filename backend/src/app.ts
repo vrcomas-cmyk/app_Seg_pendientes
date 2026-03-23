@@ -1,14 +1,19 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import jwt from '@fastify/jwt'
 import multipart from '@fastify/multipart'
 import rateLimit from '@fastify/rate-limit'
 import 'dotenv/config'
+import { createClient } from '@supabase/supabase-js'
 import { taskRoutes } from './routes/tasks'
 import { historyRoutes } from './routes/history'
 import { calendarRoutes } from './routes/calendar'
 
 const app = Fastify({ logger: true })
+
+const supabaseAuth = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+)
 
 async function main() {
   await app.register(cors, {
@@ -20,8 +25,6 @@ async function main() {
     credentials: true,
   })
 
-  await app.register(jwt, { secret: process.env.JWT_SECRET! })
-
   await app.register(multipart, {
     limits: { fileSize: 25 * 1024 * 1024 }
   })
@@ -30,9 +33,15 @@ async function main() {
     max: 100, timeWindow: '1 minute'
   })
 
+  // Middleware que verifica el JWT de Supabase
   app.decorate('authenticate', async (request: any, reply: any) => {
     try {
-      await request.jwtVerify()
+      const authHeader = request.headers.authorization
+      if (!authHeader) return reply.code(401).send({ error: 'No autorizado' })
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error } = await supabaseAuth.auth.getUser(token)
+      if (error || !user) return reply.code(401).send({ error: 'No autorizado' })
+      request.user = { id: user.id, email: user.email }
     } catch {
       reply.code(401).send({ error: 'No autorizado' })
     }
