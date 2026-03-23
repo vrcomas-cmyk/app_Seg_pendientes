@@ -29,7 +29,6 @@ async function main() {
     await app.register(rate_limit_1.default, {
         max: 100, timeWindow: '1 minute'
     });
-    // Middleware que verifica el JWT de Supabase
     app.decorate('authenticate', async (request, reply) => {
         try {
             const authHeader = request.headers.authorization;
@@ -48,7 +47,7 @@ async function main() {
     app.get('/', async () => ({ status: 'ok', version: '1.0.0' }));
     await app.register(tasks_1.taskRoutes, { prefix: '/api' });
     await app.register(history_1.historyRoutes, { prefix: '/api' });
-    await app.register(calendar_1.calendarRoutes, { prefix: '/api' });
+    await app.register(calendar_1.calendarRoutes, { prefix: '' });
     try {
         await app.listen({ port: 3001, host: '0.0.0.0' });
         console.log('✅ Backend corriendo en http://localhost:3001');
