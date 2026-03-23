@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit'
 import 'dotenv/config'
 import { taskRoutes } from './routes/tasks'
 import { historyRoutes } from './routes/history'
+import { calendarRoutes } from './routes/calendar'
 
 const app = Fastify({ logger: true })
 
@@ -41,6 +42,7 @@ async function main() {
 
   await app.register(taskRoutes, { prefix: '/api' })
   await app.register(historyRoutes, { prefix: '/api' })
+  await app.register(calendarRoutes, { prefix: '/api' })
 
   try {
     await app.listen({ port: 3001, host: '0.0.0.0' })
