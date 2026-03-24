@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import CrmOrderStatusBar from './CrmOrderStatusBar'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -357,21 +358,17 @@ export default function CrmClientPage() {
           {orders.length === 0 && <p className="text-sm text-gray-400 p-6">Sin pedidos registrados.</p>}
           {orders.map(o => (
             <div key={o.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <p className="text-sm font-bold text-gray-800">Pedido: {o.numero_pedido}</p>
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${ORDER_COLOR[o.estatus]}`}>
-                    {o.estatus}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-bold text-gray-800">Pedido: {o.numero_pedido}</p>
                 <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleDateString('es-MX')}</p>
               </div>
-              <div className="flex items-center gap-4 text-xs text-gray-400">
+              <div className="flex items-center gap-4 text-xs text-gray-400 mb-2">
                 <span>{o.crm_order_items?.[0]?.count ?? 0} material(es)</span>
                 <span>{o.crm_cedis_requests?.[0]?.count ?? 0} req. CEDIS</span>
               </div>
-              {o.comentarios && <p className="text-xs text-gray-500 mt-1">{o.comentarios}</p>}
-              <div className="flex gap-2 mt-3">
+              {o.comentarios && <p className="text-xs text-gray-500 mb-2">{o.comentarios}</p>}
+              <CrmOrderStatusBar order={o} onRefresh={load} />
+              <div className="mt-2">
                 <Link to={`/crm/${id}/order/${o.id}/cedis`}
                   className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700">
                   Ver / Crear requerimiento CEDIS

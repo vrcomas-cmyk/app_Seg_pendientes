@@ -13,6 +13,7 @@ import CrmClientPage from './pages/crm/CrmClientPage'
 import CrmFollowupPage from './pages/crm/CrmFollowupPage'
 import CrmOrderPage from './pages/crm/CrmOrderPage'
 import CrmCedisPage from './pages/crm/CrmCedisPage'
+import CrmNewClientPage from './pages/crm/CrmNewClientPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -46,7 +47,7 @@ export default function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/crm" element={<CrmListPage />} />
         <Route path="/crm/import" element={<CrmImportPage />} />
-        <Route path="/crm/new" element={<CrmClientPage />} />
+        <Route path="/crm/new" element={<CrmNewClientPage />} />
         <Route path="/crm/:id" element={<CrmClientPage />} />
         <Route path="/crm/:clientId/followup/:followupId" element={<CrmFollowupPage />} />
         <Route path="/crm/:clientId/followup/:followupId/order/new" element={<CrmOrderPage />} />
