@@ -33,6 +33,7 @@ async function calendarRoutes(app) {
     app.post('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
         const { id: taskId } = req.params;
         const userId = req.user.id;
+        const { eventDate, eventTime } = req.body;
         const taskRes = await supabase_1.supabase.from('tasks').select('*').eq('id', taskId);
         if (!taskRes.data || taskRes.data.length === 0) {
             return reply.code(404).send({ error: 'Pendiente no encontrado' });
@@ -48,15 +49,18 @@ async function calendarRoutes(app) {
             access_token: userRes.data.google_access_token,
             refresh_token: userRes.data.google_refresh_token,
         });
+        // Usar fecha y hora elegidas por el usuario
+        const dateTimeStr = `${eventDate}T${eventTime}:00`;
+        const startDate = new Date(dateTimeStr);
+        const endDate = new Date(startDate.getTime() + 3600000); // +1 hora
         const calendar = googleapis_1.google.calendar({ version: 'v3', auth: oauth2Client });
-        const dueDate = new Date(`${task.due_date}T09:00:00`);
         const { data: event } = await calendar.events.insert({
             calendarId: 'primary',
             requestBody: {
                 summary: `📌 ${task.title}`,
                 description: task.description ?? '',
-                start: { dateTime: dueDate.toISOString(), timeZone: 'America/Mexico_City' },
-                end: { dateTime: new Date(dueDate.getTime() + 3600000).toISOString(), timeZone: 'America/Mexico_City' },
+                start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
+                end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
                 reminders: {
                     useDefault: false,
                     overrides: [
@@ -69,7 +73,7 @@ async function calendarRoutes(app) {
         await supabase_1.supabase.from('calendar_events').insert({
             task_id: taskId,
             google_event_id: event.id,
-            event_date: dueDate.toISOString(),
+            event_date: startDate.toISOString(),
             created_by: userId,
         });
         return reply.send({ success: true, htmlLink: event.htmlLink });

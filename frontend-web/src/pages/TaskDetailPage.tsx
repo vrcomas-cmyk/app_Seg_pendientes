@@ -14,6 +14,9 @@ export default function TaskDetailPage() {
   const [comment, setComment] = useState('')
   const [reviewedWith, setReviewedWith] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showCalForm, setShowCalForm] = useState(false)
+  const [eventDate, setEventDate] = useState('')
+  const [eventTime, setEventTime] = useState('09:00')
 
   const load = async () => {
     const [t, h, c] = await Promise.all([
@@ -24,11 +27,12 @@ export default function TaskDetailPage() {
     setTask(t.data)
     setHistory(h.data ?? [])
     setCalEvents(c.data ?? [])
+    // Prellenar con la fecha límite del pendiente
+    if (t.data?.due_date) setEventDate(t.data.due_date)
   }
 
   useEffect(() => { load() }, [id])
 
-  // Detectar si regresó de conectar Google Calendar
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('calendar') === 'connected') {
@@ -60,13 +64,15 @@ export default function TaskDetailPage() {
   }
 
   const handleCalendar = async () => {
-    const result = await createEvent(id!)
+    if (!eventDate || !eventTime) return toast.error('Selecciona fecha y hora')
+    const result = await createEvent(id!, eventDate, eventTime)
     if (result.needsAuth) {
       toast('Conecta tu Google Calendar primero', { icon: '📅' })
       setTimeout(() => connectGoogle(), 1500)
     } else if (result.success) {
       toast.success('Evento creado en Google Calendar')
       if (result.htmlLink) window.open(result.htmlLink, '_blank')
+      setShowCalForm(false)
       load()
     } else {
       toast.error(result.error ?? 'Error al crear evento')
@@ -110,15 +116,51 @@ export default function TaskDetailPage() {
               Reactivar
             </button>
           )}
-          <button onClick={handleCalendar} disabled={calLoading || hasCalendarEvent}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              hasCalendarEvent
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
-            }`}>
-            {calLoading ? 'Creando...' : hasCalendarEvent ? '📅 En Calendar' : '📅 Agregar a Calendar'}
-          </button>
+          {!hasCalendarEvent && (
+            <button onClick={() => setShowCalForm(!showCalForm)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              📅 Agregar a Calendar
+            </button>
+          )}
+          {hasCalendarEvent && (
+            <span className="bg-gray-100 text-gray-400 px-4 py-2 rounded-lg text-sm font-medium">
+              📅 En Calendar
+            </span>
+          )}
         </div>
+
+        {/* Formulario de fecha y hora para Calendar */}
+        {showCalForm && !hasCalendarEvent && (
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-sm font-medium text-blue-700 mb-3">Selecciona fecha y hora del recordatorio</p>
+            <div className="flex gap-3 mb-3">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 mb-1 block">Fecha</label>
+                <input type="date"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  value={eventDate}
+                  onChange={e => setEventDate(e.target.value)} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 mb-1 block">Hora</label>
+                <input type="time"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  value={eventTime}
+                  onChange={e => setEventTime(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleCalendar} disabled={calLoading}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                {calLoading ? 'Creando...' : 'Crear evento'}
+              </button>
+              <button onClick={() => setShowCalForm(false)}
+                className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">

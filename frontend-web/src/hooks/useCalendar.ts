@@ -12,17 +12,20 @@ export function useCalendar() {
       headers: { Authorization: `Bearer ${session?.access_token}` }
     })
     const { url } = await res.json()
-    // Agrega el userId como state para el callback
     const urlWithState = url + `&state=${session?.user.id}`
     window.location.href = urlWithState
   }
 
-  const createEvent = async (taskId: string) => {
+  const createEvent = async (taskId: string, eventDate: string, eventTime: string) => {
     setLoading(true)
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch(`${API_URL}/tasks/${taskId}/calendar-event`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session?.access_token}` }
+      headers: {
+        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ eventDate, eventTime }),
     })
     const data = await res.json()
     setLoading(false)

@@ -10,8 +10,7 @@ const oauth2Client = new google.auth.OAuth2(
 
 export async function calendarRoutes(app: FastifyInstance) {
 
-  // URL para conectar Google Calendar
-  app.get('/auth/google', { preHandler: [app.authenticate] }, async (req, reply) => {
+  app.get('/api/auth/google', { preHandler: [app.authenticate] }, async (req, reply) => {
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['https://www.googleapis.com/auth/calendar.events'],
@@ -20,33 +19,38 @@ export async function calendarRoutes(app: FastifyInstance) {
     return reply.send({ url })
   })
 
-  // Callback de Google
   app.get('/auth/google/callback', async (req, reply) => {
     const { code, state } = req.query as { code: string; state: string }
-    const { tokens } = await oauth2Client.getToken(code)
-
-    // Guardar tokens en el usuario
-    await supabase.from('users')
-      .update({
-        google_access_token: tokens.access_token,
-        google_refresh_token: tokens.refresh_token,
-      })
-      .eq('id', state)
-
-    return reply.redirect(`${process.env.FRONTEND_URL}/dashboard?calendar=connected`)
+    try {
+      const { tokens } = await oauth2Client.getToken(code)
+      await supabase.from('users')
+        .update({
+          google_access_token: tokens.access_token,
+          google_refresh_token: tokens.refresh_token,
+        })
+        .eq('id', state)
+      return reply.redirect(`${process.env.FRONTEND_URL}/dashboard?calendar=connected`)
+    } catch (err) {
+      console.error('Calendar callback error:', err)
+      return reply.redirect(`${process.env.FRONTEND_URL}/dashboard?calendar=error`)
+    }
   })
 
-  // Crear evento en Google Calendar
-  app.post('/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+  app.post('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id: taskId } = req.params as { id: string }
     const userId = (req.user as any).id
+    const { eventDate, eventTime } = req.body as { eventDate: string; eventTime: string }
 
-    const [taskRes, userRes] = await Promise.all([
-      supabase.from('tasks').select('*').eq('id', taskId).single(),
-      supabase.from('users').select('google_access_token, google_refresh_token').eq('id', userId).single(),
-    ])
+    const taskRes = await supabase.from('tasks').select('*').eq('id', taskId)
+    if (!taskRes.data || taskRes.data.length === 0) {
+      return reply.code(404).send({ error: 'Pendiente no encontrado' })
+    }
+    const task = taskRes.data[0]
 
-    if (!taskRes.data) return reply.code(404).send({ error: 'Pendiente no encontrado' })
+    const userRes = await supabase.from('users')
+      .select('google_access_token, google_refresh_token')
+      .eq('id', userId).single()
+
     if (!userRes.data?.google_access_token) {
       return reply.code(400).send({ error: 'Conecta tu Google Calendar primero', needsAuth: true })
     }
@@ -56,16 +60,20 @@ export async function calendarRoutes(app: FastifyInstance) {
       refresh_token: userRes.data.google_refresh_token,
     })
 
+    // Usar fecha y hora elegidas por el usuario
+    const dateTimeStr = `${eventDate}T${eventTime}:00`
+    const startDate = new Date(dateTimeStr)
+    const endDate = new Date(startDate.getTime() + 3600000) // +1 hora
+
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
-    const dueDate = new Date(`${taskRes.data.due_date}T09:00:00`)
 
     const { data: event } = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: {
-        summary: `📌 ${taskRes.data.title}`,
-        description: taskRes.data.description ?? '',
-        start: { dateTime: dueDate.toISOString(), timeZone: 'America/Mexico_City' },
-        end: { dateTime: new Date(dueDate.getTime() + 3600000).toISOString(), timeZone: 'America/Mexico_City' },
+        summary: `📌 ${task.title}`,
+        description: task.description ?? '',
+        start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
+        end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
         reminders: {
           useDefault: false,
           overrides: [
@@ -79,7 +87,7 @@ export async function calendarRoutes(app: FastifyInstance) {
     await supabase.from('calendar_events').insert({
       task_id: taskId,
       google_event_id: event.id,
-      event_date: dueDate.toISOString(),
+      event_date: startDate.toISOString(),
       created_by: userId,
     })
 
