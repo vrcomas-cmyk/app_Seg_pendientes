@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
+import FileUploader from '../components/FileUploader'
 import toast from 'react-hot-toast'
+
+const API_URL = import.meta.env.VITE_API_URL
 
 export default function TaskDetailPage() {
   const { id } = useParams()
@@ -11,12 +14,22 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<any>(null)
   const [history, setHistory] = useState<any[]>([])
   const [calEvents, setCalEvents] = useState<any[]>([])
+  const [attachments, setAttachments] = useState<any[]>([])
   const [comment, setComment] = useState('')
   const [reviewedWith, setReviewedWith] = useState('')
   const [loading, setLoading] = useState(false)
   const [calMode, setCalMode] = useState<'none' | 'create' | 'reschedule'>('none')
   const [eventDate, setEventDate] = useState('')
   const [eventTime, setEventTime] = useState('09:00')
+
+  const loadAttachments = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${API_URL}/tasks/${id}/attachments`, {
+      headers: { Authorization: `Bearer ${session?.access_token}` }
+    })
+    const data = await res.json()
+    setAttachments(Array.isArray(data) ? data : [])
+  }
 
   const load = async () => {
     const [t, h, c] = await Promise.all([
@@ -28,6 +41,7 @@ export default function TaskDetailPage() {
     setHistory(h.data ?? [])
     setCalEvents(c.data ?? [])
     if (t.data?.due_date) setEventDate(t.data.due_date)
+    await loadAttachments()
   }
 
   useEffect(() => { load() }, [id])
@@ -51,9 +65,7 @@ export default function TaskDetailPage() {
   const changeStatus = async (status: string, removeCalendar: boolean) => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (removeCalendar && hasCalendarEvent) {
-      await cancelEvent(id!)
-    }
+    if (removeCalendar && hasCalendarEvent) await cancelEvent(id!)
     await supabase.from('tasks').update({ status }).eq('id', id)
     await supabase.from('task_history').insert({
       task_id: id, comment: `Pendiente marcado como ${status}.`, created_by: user?.id
@@ -61,6 +73,24 @@ export default function TaskDetailPage() {
     toast.success(`Marcado como ${status}`)
     load()
     setLoading(false)
+  }
+
+  const handleComplete = async () => {
+    if (hasCalendarEvent) {
+      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
+      await changeStatus('completado', remove)
+    } else {
+      await changeStatus('completado', false)
+    }
+  }
+
+  const handleReactivate = async () => {
+    if (hasCalendarEvent) {
+      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
+      await changeStatus('reactivado', remove)
+    } else {
+      await changeStatus('reactivado', false)
+    }
   }
 
   const handleCreate = async () => {
@@ -101,26 +131,6 @@ export default function TaskDetailPage() {
     }
   }
 
-  // Completar con confirmación para eliminar evento
-  const handleComplete = async () => {
-    if (hasCalendarEvent) {
-      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
-      await changeStatus('completado', remove)
-    } else {
-      await changeStatus('completado', false)
-    }
-  }
-
-  // Reactivar con confirmación para eliminar evento
-  const handleReactivate = async () => {
-    if (hasCalendarEvent) {
-      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
-      await changeStatus('reactivado', remove)
-    } else {
-      await changeStatus('reactivado', false)
-    }
-  }
-
   if (!task) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
 
   const priorityColor: Record<string, string> = {
@@ -135,6 +145,7 @@ export default function TaskDetailPage() {
     <div className="max-w-2xl mx-auto">
       <button onClick={() => nav('/tasks')} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
 
+      {/* Info del pendiente */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <div className="flex justify-between items-start mb-3">
           <h1 className="text-xl font-bold text-gray-800">{task.title}</h1>
@@ -166,16 +177,12 @@ export default function TaskDetailPage() {
               Reactivar
             </button>
           )}
-
-          {/* Sin evento: botón crear */}
           {!hasCalendarEvent && calMode === 'none' && (
             <button onClick={() => setCalMode('create')}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
               📅 Agregar a Calendar
             </button>
           )}
-
-          {/* Con evento: botones reagendar y eliminar */}
           {hasCalendarEvent && calMode === 'none' && (
             <>
               <button onClick={() => { setCalMode('reschedule'); setEventDate(activeEvent.event_date.split('T')[0]); setEventTime(activeEvent.event_date.split('T')[1]?.slice(0,5) ?? '09:00') }}
@@ -190,7 +197,7 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        {/* Formulario crear/reagendar */}
+        {/* Formulario crear/reagendar Calendar */}
         {(calMode === 'create' || calMode === 'reschedule') && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm font-medium text-blue-700 mb-3">
@@ -211,9 +218,7 @@ export default function TaskDetailPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={calMode === 'create' ? handleCreate : handleReschedule}
-                disabled={calLoading}
+              <button onClick={calMode === 'create' ? handleCreate : handleReschedule} disabled={calLoading}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {calLoading ? 'Guardando...' : calMode === 'create' ? 'Crear evento' : 'Reagendar'}
               </button>
@@ -226,6 +231,15 @@ export default function TaskDetailPage() {
         )}
       </div>
 
+      {/* Archivos adjuntos */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <FileUploader
+          taskId={id!}
+          attachments={attachments}
+          onRefresh={loadAttachments} />
+      </div>
+
+      {/* Seguimiento */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <h2 className="font-semibold text-gray-700 mb-4">Agregar seguimiento</h2>
         <textarea className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm h-20 resize-none outline-none focus:border-teal-400 mb-3"
@@ -237,6 +251,7 @@ export default function TaskDetailPage() {
         </button>
       </div>
 
+      {/* Historial */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="font-semibold text-gray-700 mb-4">Historial</h2>
         {history.length === 0 && <p className="text-sm text-gray-400">Sin comentarios aún.</p>}

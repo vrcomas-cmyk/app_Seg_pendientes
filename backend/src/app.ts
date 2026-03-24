@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { taskRoutes } from './routes/tasks'
 import { historyRoutes } from './routes/history'
 import { calendarRoutes } from './routes/calendar'
+import { attachmentRoutes } from './routes/attachments'
 
 const app = Fastify({ logger: true })
 
@@ -52,6 +53,7 @@ async function main() {
 
   await app.register(taskRoutes, { prefix: '/api' })
   await app.register(historyRoutes, { prefix: '/api' })
+  await app.register(attachmentRoutes, { prefix: '/api' })
   await app.register(calendarRoutes, { prefix: '' })
 
   try {

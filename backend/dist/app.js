@@ -12,6 +12,7 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const tasks_1 = require("./routes/tasks");
 const history_1 = require("./routes/history");
 const calendar_1 = require("./routes/calendar");
+const attachments_1 = require("./routes/attachments");
 const app = (0, fastify_1.default)({ logger: true });
 const supabaseAuth = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 async function main() {
@@ -49,6 +50,7 @@ async function main() {
     app.get('/', async () => ({ status: 'ok', version: '1.0.0' }));
     await app.register(tasks_1.taskRoutes, { prefix: '/api' });
     await app.register(history_1.historyRoutes, { prefix: '/api' });
+    await app.register(attachments_1.attachmentRoutes, { prefix: '/api' });
     await app.register(calendar_1.calendarRoutes, { prefix: '' });
     try {
         await app.listen({ port: 3001, host: '0.0.0.0' });
