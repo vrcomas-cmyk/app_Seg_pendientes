@@ -43,14 +43,14 @@ async function calendarRoutes(app) {
         }
     });
     // Crear evento
-    app.post('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-        const { id: taskId } = req.params;
+    app.post('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+        const { taskId } = req.params;
         const userId = req.user.id;
         const { eventDate, eventTime } = req.body;
-        const taskRes = await supabase_1.supabase.from('tasks').select('*').eq('id', taskId);
-        if (!taskRes.data || taskRes.data.length === 0)
+        const { data: tasks } = await supabase_1.supabase.from('tasks').select('*').eq('id', taskId);
+        if (!tasks || tasks.length === 0)
             return reply.code(404).send({ error: 'Pendiente no encontrado' });
-        const task = taskRes.data[0];
+        const task = tasks[0];
         const calendar = await getCalendarClient(userId);
         if (!calendar)
             return reply.code(400).send({ error: 'Conecta tu Google Calendar primero', needsAuth: true });
@@ -82,45 +82,57 @@ async function calendarRoutes(app) {
         return reply.send({ success: true, htmlLink: event.htmlLink });
     });
     // Reagendar evento
-    app.put('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-        const { id: taskId } = req.params;
+    app.put('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+        const { taskId } = req.params;
         const userId = req.user.id;
         const { eventDate, eventTime } = req.body;
-        const { data: calEvent } = await supabase_1.supabase.from('calendar_events')
-            .select('*').eq('task_id', taskId).eq('is_active', true).single();
+        console.log('Reagendando taskId:', taskId, 'fecha:', eventDate, 'hora:', eventTime);
+        const { data: calEvent, error: calError } = await supabase_1.supabase
+            .from('calendar_events')
+            .select('*')
+            .eq('task_id', taskId)
+            .eq('is_active', true)
+            .single();
+        console.log('calEvent:', JSON.stringify(calEvent), 'error:', JSON.stringify(calError));
         if (!calEvent)
-            return reply.code(404).send({ error: 'No hay evento de calendario para este pendiente' });
+            return reply.code(404).send({ error: 'No hay evento activo para este pendiente' });
         const calendar = await getCalendarClient(userId);
         if (!calendar)
             return reply.code(400).send({ error: 'No autorizado con Google Calendar' });
         const { data: task } = await supabase_1.supabase.from('tasks').select('*').eq('id', taskId).single();
         const startDate = new Date(`${eventDate}T${eventTime}:00`);
         const endDate = new Date(startDate.getTime() + 3600000);
-        await calendar.events.update({
-            calendarId: 'primary',
-            eventId: calEvent.google_event_id,
-            requestBody: {
-                summary: `📌 ${task?.title}`,
-                description: task?.description ?? '',
-                start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
-                end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
-                reminders: {
-                    useDefault: false,
-                    overrides: [
-                        { method: 'email', minutes: 1440 },
-                        { method: 'popup', minutes: 60 },
-                    ],
+        try {
+            await calendar.events.update({
+                calendarId: 'primary',
+                eventId: calEvent.google_event_id,
+                requestBody: {
+                    summary: `📌 ${task?.title}`,
+                    description: task?.description ?? '',
+                    start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
+                    end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
+                    reminders: {
+                        useDefault: false,
+                        overrides: [
+                            { method: 'email', minutes: 1440 },
+                            { method: 'popup', minutes: 60 },
+                        ],
+                    },
                 },
-            },
-        });
+            });
+        }
+        catch (err) {
+            console.error('Error Google Calendar update:', err?.message);
+            return reply.code(500).send({ error: 'Error al actualizar en Google Calendar: ' + err?.message });
+        }
         await supabase_1.supabase.from('calendar_events')
             .update({ event_date: startDate.toISOString() })
             .eq('id', calEvent.id);
         return reply.send({ success: true });
     });
     // Cancelar evento
-    app.delete('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-        const { id: taskId } = req.params;
+    app.delete('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+        const { taskId } = req.params;
         const userId = req.user.id;
         const { data: calEvent } = await supabase_1.supabase.from('calendar_events')
             .select('*').eq('task_id', taskId).eq('is_active', true).single();
@@ -135,7 +147,7 @@ async function calendarRoutes(app) {
                 });
             }
             catch (e) {
-                console.error('Error eliminando evento de Google:', e);
+                console.error('Error eliminando evento:', e?.message);
             }
         }
         await supabase_1.supabase.from('calendar_events')
