@@ -21,7 +21,7 @@ export interface RecipientImport {
   telefonos: string[]; correos: string[];
 }
 
-const clean = (v?: string) => v?.trim().replace(/\s+/g, ' ') || ''
+const clean = (v?: string) => v?.toString().trim().replace(/\s+/g, ' ') || ''
 
 const mergeUnique = (a: string[], b: string[]) => {
   const seen = new Set(a.map(x => x.toLowerCase()))
@@ -30,12 +30,12 @@ const mergeUnique = (a: string[], b: string[]) => {
 
 const splitPhones = (v?: string): string[] => {
   if (!v) return []
-  return v.split(',').map(x => x.trim()).filter(Boolean)
+  return v.toString().split(',').map(x => x.trim()).filter(Boolean)
 }
 
 const splitEmails = (v?: string): string[] => {
   if (!v) return []
-  return v.split(/;\s*/).map(x => x.trim()).filter(x => x.includes('@'))
+  return v.toString().split(/;\s*/).map(x => x.trim()).filter(x => x.includes('@'))
 }
 
 export function parseExcelFile(file: File): Promise<ClientImport[]> {
@@ -43,9 +43,17 @@ export function parseExcelFile(file: File): Promise<ClientImport[]> {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
-        const wb = XLSX.read(e.target?.result, { type: 'binary' })
+        const arrayBuffer = e.target?.result as ArrayBuffer
+        const data = new Uint8Array(arrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows: RawRow[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+        if (rows.length === 0) {
+          reject(new Error('El archivo está vacío o no tiene el formato esperado'))
+          return
+        }
+
         const clientMap = new Map<string, ClientImport>()
 
         for (const row of rows) {
@@ -94,10 +102,13 @@ export function parseExcelFile(file: File): Promise<ClientImport[]> {
             }
           }
         }
+
         resolve(Array.from(clientMap.values()))
-      } catch (err) { reject(err) }
+      } catch (err) {
+        reject(err)
+      }
     }
-    reader.onerror = reject
-    reader.readAsBinaryString(file)
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+    reader.readAsArrayBuffer(file)
   })
 }
