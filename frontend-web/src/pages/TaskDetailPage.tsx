@@ -7,14 +7,14 @@ import toast from 'react-hot-toast'
 export default function TaskDetailPage() {
   const { id } = useParams()
   const nav = useNavigate()
-  const { connectGoogle, createEvent, loading: calLoading } = useCalendar()
+  const { connectGoogle, createEvent, rescheduleEvent, cancelEvent, loading: calLoading } = useCalendar()
   const [task, setTask] = useState<any>(null)
   const [history, setHistory] = useState<any[]>([])
   const [calEvents, setCalEvents] = useState<any[]>([])
   const [comment, setComment] = useState('')
   const [reviewedWith, setReviewedWith] = useState('')
   const [loading, setLoading] = useState(false)
-  const [showCalForm, setShowCalForm] = useState(false)
+  const [calMode, setCalMode] = useState<'none' | 'create' | 'reschedule'>('none')
   const [eventDate, setEventDate] = useState('')
   const [eventTime, setEventTime] = useState('09:00')
 
@@ -22,12 +22,11 @@ export default function TaskDetailPage() {
     const [t, h, c] = await Promise.all([
       supabase.from('tasks').select('*').eq('id', id).single(),
       supabase.from('task_history').select('*, users:created_by(full_name, email)').eq('task_id', id).order('created_at'),
-      supabase.from('calendar_events').select('*').eq('task_id', id),
+      supabase.from('calendar_events').select('*').eq('task_id', id).eq('is_active', true),
     ])
     setTask(t.data)
     setHistory(h.data ?? [])
     setCalEvents(c.data ?? [])
-    // Prellenar con la fecha límite del pendiente
     if (t.data?.due_date) setEventDate(t.data.due_date)
   }
 
@@ -35,9 +34,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('calendar') === 'connected') {
-      toast.success('Google Calendar conectado')
-    }
+    if (params.get('calendar') === 'connected') toast.success('Google Calendar conectado')
   }, [])
 
   const addHistory = async () => {
@@ -51,9 +48,12 @@ export default function TaskDetailPage() {
     load()
   }
 
-  const changeStatus = async (status: string) => {
+  const changeStatus = async (status: string, removeCalendar: boolean) => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
+    if (removeCalendar && hasCalendarEvent) {
+      await cancelEvent(id!)
+    }
     await supabase.from('tasks').update({ status }).eq('id', id)
     await supabase.from('task_history').insert({
       task_id: id, comment: `Pendiente marcado como ${status}.`, created_by: user?.id
@@ -63,7 +63,7 @@ export default function TaskDetailPage() {
     setLoading(false)
   }
 
-  const handleCalendar = async () => {
+  const handleCreate = async () => {
     if (!eventDate || !eventTime) return toast.error('Selecciona fecha y hora')
     const result = await createEvent(id!, eventDate, eventTime)
     if (result.needsAuth) {
@@ -72,10 +72,52 @@ export default function TaskDetailPage() {
     } else if (result.success) {
       toast.success('Evento creado en Google Calendar')
       if (result.htmlLink) window.open(result.htmlLink, '_blank')
-      setShowCalForm(false)
+      setCalMode('none')
       load()
     } else {
       toast.error(result.error ?? 'Error al crear evento')
+    }
+  }
+
+  const handleReschedule = async () => {
+    if (!eventDate || !eventTime) return toast.error('Selecciona fecha y hora')
+    const result = await rescheduleEvent(id!, eventDate, eventTime)
+    if (result.success) {
+      toast.success('Evento reagendado en Google Calendar')
+      setCalMode('none')
+      load()
+    } else {
+      toast.error(result.error ?? 'Error al reagendar')
+    }
+  }
+
+  const handleCancel = async () => {
+    const result = await cancelEvent(id!)
+    if (result.success) {
+      toast.success('Evento eliminado de Google Calendar')
+      load()
+    } else {
+      toast.error(result.error ?? 'Error al eliminar evento')
+    }
+  }
+
+  // Completar con confirmación para eliminar evento
+  const handleComplete = async () => {
+    if (hasCalendarEvent) {
+      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
+      await changeStatus('completado', remove)
+    } else {
+      await changeStatus('completado', false)
+    }
+  }
+
+  // Reactivar con confirmación para eliminar evento
+  const handleReactivate = async () => {
+    if (hasCalendarEvent) {
+      const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
+      await changeStatus('reactivado', remove)
+    } else {
+      await changeStatus('reactivado', false)
     }
   }
 
@@ -86,7 +128,8 @@ export default function TaskDetailPage() {
     media: 'bg-yellow-100 text-yellow-700',
     baja: 'bg-green-100 text-green-700'
   }
-  const hasCalendarEvent = calEvents.some(e => e.is_active)
+  const hasCalendarEvent = calEvents.length > 0
+  const activeEvent = calEvents[0]
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -102,59 +145,79 @@ export default function TaskDetailPage() {
           <p>Solicitante: <span className="text-gray-600">{task.requested_by}</span></p>
           <p>Fecha límite: <span className="text-gray-600">{task.due_date}</span></p>
           <p>Estatus: <span className="text-gray-600 font-medium">{task.status}</span></p>
+          {hasCalendarEvent && (
+            <p>Evento Calendar: <span className="text-blue-600">
+              {new Date(activeEvent.event_date).toLocaleString('es-MX')}
+            </span></p>
+          )}
         </div>
+
+        {/* Botones de acción */}
         <div className="flex gap-2 mt-4 flex-wrap">
           {task.status !== 'completado' && (
-            <button onClick={() => changeStatus('completado')} disabled={loading}
+            <button onClick={handleComplete} disabled={loading}
               className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
               Completar
             </button>
           )}
           {task.status === 'completado' && (
-            <button onClick={() => changeStatus('reactivado')} disabled={loading}
+            <button onClick={handleReactivate} disabled={loading}
               className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50">
               Reactivar
             </button>
           )}
-          {!hasCalendarEvent && (
-            <button onClick={() => setShowCalForm(!showCalForm)}
+
+          {/* Sin evento: botón crear */}
+          {!hasCalendarEvent && calMode === 'none' && (
+            <button onClick={() => setCalMode('create')}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
               📅 Agregar a Calendar
             </button>
           )}
-          {hasCalendarEvent && (
-            <span className="bg-gray-100 text-gray-400 px-4 py-2 rounded-lg text-sm font-medium">
-              📅 En Calendar
-            </span>
+
+          {/* Con evento: botones reagendar y eliminar */}
+          {hasCalendarEvent && calMode === 'none' && (
+            <>
+              <button onClick={() => { setCalMode('reschedule'); setEventDate(activeEvent.event_date.split('T')[0]); setEventTime(activeEvent.event_date.split('T')[1]?.slice(0,5) ?? '09:00') }}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+                📅 Reagendar
+              </button>
+              <button onClick={handleCancel} disabled={calLoading}
+                className="bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 disabled:opacity-50">
+                🗑 Quitar evento
+              </button>
+            </>
           )}
         </div>
 
-        {/* Formulario de fecha y hora para Calendar */}
-        {showCalForm && !hasCalendarEvent && (
+        {/* Formulario crear/reagendar */}
+        {(calMode === 'create' || calMode === 'reschedule') && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm font-medium text-blue-700 mb-3">Selecciona fecha y hora del recordatorio</p>
+            <p className="text-sm font-medium text-blue-700 mb-3">
+              {calMode === 'create' ? 'Selecciona fecha y hora del recordatorio' : 'Nueva fecha y hora del evento'}
+            </p>
             <div className="flex gap-3 mb-3">
               <div className="flex-1">
                 <label className="text-xs text-gray-500 mb-1 block">Fecha</label>
                 <input type="date"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-                  value={eventDate}
-                  onChange={e => setEventDate(e.target.value)} />
+                  value={eventDate} onChange={e => setEventDate(e.target.value)} />
               </div>
               <div className="flex-1">
                 <label className="text-xs text-gray-500 mb-1 block">Hora</label>
                 <input type="time"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-                  value={eventTime}
-                  onChange={e => setEventTime(e.target.value)} />
+                  value={eventTime} onChange={e => setEventTime(e.target.value)} />
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleCalendar} disabled={calLoading}
+              <button
+                onClick={calMode === 'create' ? handleCreate : handleReschedule}
+                disabled={calLoading}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                {calLoading ? 'Creando...' : 'Crear evento'}
+                {calLoading ? 'Guardando...' : calMode === 'create' ? 'Crear evento' : 'Reagendar'}
               </button>
-              <button onClick={() => setShowCalForm(false)}
+              <button onClick={() => setCalMode('none')}
                 className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">
                 Cancelar
               </button>
