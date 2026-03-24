@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import TaskListPage from './pages/TaskListPage'
 import NewTaskPage from './pages/NewTaskPage'
 import TaskDetailPage from './pages/TaskDetailPage'
+import ProfilePage from './pages/ProfilePage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -41,8 +42,8 @@ export default function App() {
         <Route path="/tasks" element={<TaskListPage />} />
         <Route path="/tasks/new" element={<NewTaskPage />} />
         <Route path="/tasks/:id" element={<TaskDetailPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
     </Routes>
   )
 }
-  

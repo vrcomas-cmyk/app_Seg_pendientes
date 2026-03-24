@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify'
 import { google } from 'googleapis'
 import { supabase } from '../supabase'
 
+const TIMEZONE = 'America/Mexico_City'
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
@@ -18,6 +20,13 @@ async function getCalendarClient(userId: string) {
     refresh_token: user.google_refresh_token,
   })
   return google.calendar({ version: 'v3', auth: oauth2Client })
+}
+
+// Suma una hora a un string HH:MM
+function addOneHour(time: string): string {
+  const [h, m] = time.split(':').map(Number)
+  const newH = (h + 1) % 24
+  return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 export async function calendarRoutes(app: FastifyInstance) {
@@ -49,30 +58,31 @@ export async function calendarRoutes(app: FastifyInstance) {
   })
 
   // Crear evento
-  app.post('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const { id: taskId } = req.params as { id: string }
+  app.post('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { taskId } = req.params as { taskId: string }
     const userId = (req.user as any).id
     const { eventDate, eventTime } = req.body as { eventDate: string; eventTime: string }
 
-    const taskRes = await supabase.from('tasks').select('*').eq('id', taskId)
-    if (!taskRes.data || taskRes.data.length === 0)
+    const { data: tasks } = await supabase.from('tasks').select('*').eq('id', taskId)
+    if (!tasks || tasks.length === 0)
       return reply.code(404).send({ error: 'Pendiente no encontrado' })
-    const task = taskRes.data[0]
+    const task = tasks[0]
 
     const calendar = await getCalendarClient(userId)
     if (!calendar)
       return reply.code(400).send({ error: 'Conecta tu Google Calendar primero', needsAuth: true })
 
-    const startDate = new Date(`${eventDate}T${eventTime}:00`)
-    const endDate = new Date(startDate.getTime() + 3600000)
+    // Pasar fecha/hora como string local — Google Calendar interpreta con el timezone dado
+    const startDateTime = `${eventDate}T${eventTime}:00`
+    const endDateTime = `${eventDate}T${addOneHour(eventTime)}:00`
 
     const { data: event } = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: {
         summary: `📌 ${task.title}`,
         description: task.description ?? '',
-        start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
-        end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
+        start: { dateTime: startDateTime, timeZone: TIMEZONE },
+        end: { dateTime: endDateTime, timeZone: TIMEZONE },
         reminders: {
           useDefault: false,
           overrides: [
@@ -83,10 +93,13 @@ export async function calendarRoutes(app: FastifyInstance) {
       },
     })
 
+    // Guardar en DB como UTC para referencia
+    const startUTC = new Date(`${eventDate}T${eventTime}:00-06:00`).toISOString()
+
     await supabase.from('calendar_events').insert({
       task_id: taskId,
       google_event_id: event.id,
-      event_date: startDate.toISOString(),
+      event_date: startUTC,
       created_by: userId,
       is_active: true,
     })
@@ -95,51 +108,64 @@ export async function calendarRoutes(app: FastifyInstance) {
   })
 
   // Reagendar evento
-  app.put('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const { id: taskId } = req.params as { id: string }
+  app.put('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { taskId } = req.params as { taskId: string }
     const userId = (req.user as any).id
     const { eventDate, eventTime } = req.body as { eventDate: string; eventTime: string }
 
-    const { data: calEvent } = await supabase.from('calendar_events')
-      .select('*').eq('task_id', taskId).eq('is_active', true).single()
+    const { data: calEvent } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('task_id', taskId)
+      .eq('is_active', true)
+      .single()
 
-    if (!calEvent) return reply.code(404).send({ error: 'No hay evento de calendario para este pendiente' })
+    if (!calEvent)
+      return reply.code(404).send({ error: 'No hay evento activo para este pendiente' })
 
     const calendar = await getCalendarClient(userId)
-    if (!calendar) return reply.code(400).send({ error: 'No autorizado con Google Calendar' })
+    if (!calendar)
+      return reply.code(400).send({ error: 'No autorizado con Google Calendar' })
 
     const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single()
-    const startDate = new Date(`${eventDate}T${eventTime}:00`)
-    const endDate = new Date(startDate.getTime() + 3600000)
 
-    await calendar.events.update({
-      calendarId: 'primary',
-      eventId: calEvent.google_event_id,
-      requestBody: {
-        summary: `📌 ${task?.title}`,
-        description: task?.description ?? '',
-        start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
-        end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: 'email', minutes: 1440 },
-            { method: 'popup', minutes: 60 },
-          ],
+    const startDateTime = `${eventDate}T${eventTime}:00`
+    const endDateTime = `${eventDate}T${addOneHour(eventTime)}:00`
+
+    try {
+      await calendar.events.update({
+        calendarId: 'primary',
+        eventId: calEvent.google_event_id,
+        requestBody: {
+          summary: `📌 ${task?.title}`,
+          description: task?.description ?? '',
+          start: { dateTime: startDateTime, timeZone: TIMEZONE },
+          end: { dateTime: endDateTime, timeZone: TIMEZONE },
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'email', minutes: 1440 },
+              { method: 'popup', minutes: 60 },
+            ],
+          },
         },
-      },
-    })
+      })
+    } catch (err: any) {
+      console.error('Error reagendando:', err?.message)
+      return reply.code(500).send({ error: 'Error al reagendar: ' + err?.message })
+    }
 
+    const startUTC = new Date(`${eventDate}T${eventTime}:00-06:00`).toISOString()
     await supabase.from('calendar_events')
-      .update({ event_date: startDate.toISOString() })
+      .update({ event_date: startUTC })
       .eq('id', calEvent.id)
 
     return reply.send({ success: true })
   })
 
   // Cancelar evento
-  app.delete('/api/tasks/:id/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const { id: taskId } = req.params as { id: string }
+  app.delete('/api/tasks/:taskId/calendar-event', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { taskId } = req.params as { taskId: string }
     const userId = (req.user as any).id
 
     const { data: calEvent } = await supabase.from('calendar_events')
@@ -154,8 +180,8 @@ export async function calendarRoutes(app: FastifyInstance) {
           calendarId: 'primary',
           eventId: calEvent.google_event_id,
         })
-      } catch (e) {
-        console.error('Error eliminando evento de Google:', e)
+      } catch (e: any) {
+        console.error('Error eliminando evento:', e?.message)
       }
     }
 
