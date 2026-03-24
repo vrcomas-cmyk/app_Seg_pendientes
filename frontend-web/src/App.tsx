@@ -7,6 +7,10 @@ import TaskListPage from './pages/TaskListPage'
 import NewTaskPage from './pages/NewTaskPage'
 import TaskDetailPage from './pages/TaskDetailPage'
 import ProfilePage from './pages/ProfilePage'
+import CrmListPage from './pages/crm/CrmListPage'
+import CrmImportPage from './pages/crm/CrmImportPage'
+import CrmClientPage from './pages/crm/CrmClientPage'
+import CrmFollowupPage from './pages/crm/CrmFollowupPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -15,12 +19,9 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setLoading(false)
+      setSession(data.session); setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_, s) => setSession(s)
-    )
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
     return () => subscription.unsubscribe()
   }, [])
 
@@ -30,9 +31,7 @@ export default function App() {
     </div>
   )
 
-  if (!session) return (
-    <Routes><Route path="*" element={<LoginPage />} /></Routes>
-  )
+  if (!session) return <Routes><Route path="*" element={<LoginPage />} /></Routes>
 
   return (
     <Routes>
@@ -43,6 +42,11 @@ export default function App() {
         <Route path="/tasks/new" element={<NewTaskPage />} />
         <Route path="/tasks/:id" element={<TaskDetailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/crm" element={<CrmListPage />} />
+        <Route path="/crm/import" element={<CrmImportPage />} />
+        <Route path="/crm/new" element={<CrmClientPage />} />
+        <Route path="/crm/:id" element={<CrmClientPage />} />
+        <Route path="/crm/:clientId/followup/:followupId" element={<CrmFollowupPage />} />
       </Route>
     </Routes>
   )
