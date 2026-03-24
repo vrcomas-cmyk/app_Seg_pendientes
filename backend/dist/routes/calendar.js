@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.calendarRoutes = calendarRoutes;
 const googleapis_1 = require("googleapis");
 const supabase_1 = require("../supabase");
+const TIMEZONE = 'America/Mexico_City';
 const oauth2Client = new googleapis_1.google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
 async function getCalendarClient(userId) {
     const { data: user } = await supabase_1.supabase.from('users')
@@ -15,6 +16,12 @@ async function getCalendarClient(userId) {
         refresh_token: user.google_refresh_token,
     });
     return googleapis_1.google.calendar({ version: 'v3', auth: oauth2Client });
+}
+// Suma una hora a un string HH:MM
+function addOneHour(time) {
+    const [h, m] = time.split(':').map(Number);
+    const newH = (h + 1) % 24;
+    return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 async function calendarRoutes(app) {
     app.get('/api/auth/google', { preHandler: [app.authenticate] }, async (req, reply) => {
@@ -54,15 +61,16 @@ async function calendarRoutes(app) {
         const calendar = await getCalendarClient(userId);
         if (!calendar)
             return reply.code(400).send({ error: 'Conecta tu Google Calendar primero', needsAuth: true });
-        const startDate = new Date(`${eventDate}T${eventTime}:00`);
-        const endDate = new Date(startDate.getTime() + 3600000);
+        // Pasar fecha/hora como string local — Google Calendar interpreta con el timezone dado
+        const startDateTime = `${eventDate}T${eventTime}:00`;
+        const endDateTime = `${eventDate}T${addOneHour(eventTime)}:00`;
         const { data: event } = await calendar.events.insert({
             calendarId: 'primary',
             requestBody: {
                 summary: `📌 ${task.title}`,
                 description: task.description ?? '',
-                start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
-                end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
+                start: { dateTime: startDateTime, timeZone: TIMEZONE },
+                end: { dateTime: endDateTime, timeZone: TIMEZONE },
                 reminders: {
                     useDefault: false,
                     overrides: [
@@ -72,10 +80,12 @@ async function calendarRoutes(app) {
                 },
             },
         });
+        // Guardar en DB como UTC para referencia
+        const startUTC = new Date(`${eventDate}T${eventTime}:00-06:00`).toISOString();
         await supabase_1.supabase.from('calendar_events').insert({
             task_id: taskId,
             google_event_id: event.id,
-            event_date: startDate.toISOString(),
+            event_date: startUTC,
             created_by: userId,
             is_active: true,
         });
@@ -86,22 +96,20 @@ async function calendarRoutes(app) {
         const { taskId } = req.params;
         const userId = req.user.id;
         const { eventDate, eventTime } = req.body;
-        console.log('Reagendando taskId:', taskId, 'fecha:', eventDate, 'hora:', eventTime);
-        const { data: calEvent, error: calError } = await supabase_1.supabase
+        const { data: calEvent } = await supabase_1.supabase
             .from('calendar_events')
             .select('*')
             .eq('task_id', taskId)
             .eq('is_active', true)
             .single();
-        console.log('calEvent:', JSON.stringify(calEvent), 'error:', JSON.stringify(calError));
         if (!calEvent)
             return reply.code(404).send({ error: 'No hay evento activo para este pendiente' });
         const calendar = await getCalendarClient(userId);
         if (!calendar)
             return reply.code(400).send({ error: 'No autorizado con Google Calendar' });
         const { data: task } = await supabase_1.supabase.from('tasks').select('*').eq('id', taskId).single();
-        const startDate = new Date(`${eventDate}T${eventTime}:00`);
-        const endDate = new Date(startDate.getTime() + 3600000);
+        const startDateTime = `${eventDate}T${eventTime}:00`;
+        const endDateTime = `${eventDate}T${addOneHour(eventTime)}:00`;
         try {
             await calendar.events.update({
                 calendarId: 'primary',
@@ -109,8 +117,8 @@ async function calendarRoutes(app) {
                 requestBody: {
                     summary: `📌 ${task?.title}`,
                     description: task?.description ?? '',
-                    start: { dateTime: startDate.toISOString(), timeZone: 'America/Mexico_City' },
-                    end: { dateTime: endDate.toISOString(), timeZone: 'America/Mexico_City' },
+                    start: { dateTime: startDateTime, timeZone: TIMEZONE },
+                    end: { dateTime: endDateTime, timeZone: TIMEZONE },
                     reminders: {
                         useDefault: false,
                         overrides: [
@@ -122,11 +130,12 @@ async function calendarRoutes(app) {
             });
         }
         catch (err) {
-            console.error('Error Google Calendar update:', err?.message);
-            return reply.code(500).send({ error: 'Error al actualizar en Google Calendar: ' + err?.message });
+            console.error('Error reagendando:', err?.message);
+            return reply.code(500).send({ error: 'Error al reagendar: ' + err?.message });
         }
+        const startUTC = new Date(`${eventDate}T${eventTime}:00-06:00`).toISOString();
         await supabase_1.supabase.from('calendar_events')
-            .update({ event_date: startDate.toISOString() })
+            .update({ event_date: startUTC })
             .eq('id', calEvent.id);
         return reply.send({ success: true });
     });
