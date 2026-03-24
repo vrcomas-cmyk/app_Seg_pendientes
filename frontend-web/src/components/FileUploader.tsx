@@ -18,9 +18,8 @@ const FILE_ICONS: Record<string, string> = {
   'application/msword': '📝',
 }
 
-const PREVIEWABLE = [
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'
-]
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const PREVIEWABLE = [...IMAGE_TYPES, 'application/pdf']
 
 interface Attachment {
   id: string
@@ -40,6 +39,7 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<{ url: string; type: string; name: string } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   const getAuthHeader = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -62,9 +62,7 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
     try {
       const headers = await getAuthHeader()
       const res = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
-        method: 'POST',
-        headers,
-        body: formData,
+        method: 'POST', headers, body: formData,
       })
       const data = await res.json()
       if (!res.ok) toast.error(data.error ?? 'Error al subir archivo')
@@ -75,13 +73,11 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
   }
 
   const handlePreview = async (attachment: Attachment) => {
+    setPreviewLoading(true)
     const url = await getSignedUrl(attachment)
+    setPreviewLoading(false)
     if (!url) return toast.error('No se pudo obtener el archivo')
-    if (PREVIEWABLE.includes(attachment.file_type)) {
-      setPreview({ url, type: attachment.file_type, name: attachment.filename })
-    } else {
-      window.open(url, '_blank')
-    }
+    setPreview({ url, type: attachment.file_type, name: attachment.filename })
   }
 
   const handleDownload = async (attachment: Attachment) => {
@@ -104,6 +100,14 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
       toast.success('Archivo eliminado')
       onRefresh()
     } catch { toast.error('Error al eliminar archivo') }
+  }
+
+  // Para PDFs usamos Google Docs Viewer
+  const getPreviewSrc = (url: string, type: string) => {
+    if (type === 'application/pdf') {
+      return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
+    }
+    return url
   }
 
   return (
@@ -132,17 +136,14 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
                 <p className="text-sm font-medium text-gray-700 truncate">{att.filename}</p>
                 <p className="text-xs text-gray-400">
                   {att.file_size_kb} KB · {new Date(att.created_at).toLocaleDateString('es-MX')}
-                  {PREVIEWABLE.includes(att.file_type) && (
-                    <span className="ml-1 text-teal-500">· Vista previa disponible</span>
-                  )}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0 ml-2">
               {PREVIEWABLE.includes(att.file_type) && (
-                <button onClick={() => handlePreview(att)}
-                  className="text-xs text-teal-600 hover:text-teal-700 font-medium px-2 py-1 rounded hover:bg-teal-50">
-                  Ver
+                <button onClick={() => handlePreview(att)} disabled={previewLoading}
+                  className="text-xs text-teal-600 hover:text-teal-700 font-medium px-2 py-1 rounded hover:bg-teal-50 disabled:opacity-50">
+                  {previewLoading ? '...' : 'Ver'}
                 </button>
               )}
               <button onClick={() => handleDownload(att)}
@@ -160,38 +161,45 @@ export default function FileUploader({ taskId, attachments, onRefresh }: Props) 
 
       {/* Modal de vista previa */}
       {preview && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
           onClick={() => setPreview(null)}>
-          <div
-            className="bg-white rounded-xl overflow-hidden max-w-4xl w-full max-h-screen flex flex-col"
+          <div className="bg-white rounded-xl overflow-hidden w-full flex flex-col"
+            style={{ maxWidth: '900px', maxHeight: '90vh' }}
             onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <p className="text-sm font-medium text-gray-700 truncate">{preview.name}</p>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+              <p className="text-sm font-medium text-gray-700 truncate max-w-xs">{preview.name}</p>
               <div className="flex items-center gap-2">
                 <a href={preview.url} target="_blank" rel="noreferrer"
                   className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1 rounded border border-blue-200 hover:bg-blue-50">
                   Abrir en nueva pestaña
                 </a>
                 <button onClick={() => setPreview(null)}
-                  className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center">
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">
                   ×
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto bg-gray-100" style={{ minHeight: '400px', maxHeight: '75vh' }}>
-              {preview.type === 'application/pdf' ? (
-                <iframe
-                  src={preview.url}
-                  className="w-full h-full border-0"
-                  style={{ minHeight: '500px' }}
-                  title={preview.name} />
+
+            {/* Contenido */}
+            <div className="flex-1 overflow-auto bg-gray-100" style={{ minHeight: '500px' }}>
+              {IMAGE_TYPES.includes(preview.type) ? (
+                <div className="flex items-center justify-center h-full p-4" style={{ minHeight: '500px' }}>
+                  <img src={preview.url} alt={preview.name}
+                    className="max-w-full max-h-full object-contain rounded shadow" />
+                </div>
               ) : (
-                <div className="flex items-center justify-center h-full p-4">
-                  <img
-                    src={preview.url}
-                    alt={preview.name}
-                    className="max-w-full max-h-full object-contain rounded" />
+                <div className="w-full h-full flex flex-col items-center" style={{ minHeight: '500px' }}>
+                  <iframe
+                    src={getPreviewSrc(preview.url, preview.type)}
+                    className="w-full border-0 flex-1"
+                    style={{ minHeight: '500px' }}
+                    title={preview.name}
+                    allow="fullscreen" />
+                  <p className="text-xs text-gray-400 py-2">
+                    Si no carga, haz clic en "Abrir en nueva pestaña"
+                  </p>
                 </div>
               )}
             </div>
