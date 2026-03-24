@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
 import FileUploader from '../components/FileUploader'
@@ -15,6 +15,7 @@ export default function TaskDetailPage() {
   const [history, setHistory] = useState<any[]>([])
   const [calEvents, setCalEvents] = useState<any[]>([])
   const [attachments, setAttachments] = useState<any[]>([])
+  const [crmFollowup, setCrmFollowup] = useState<any>(null)
   const [comment, setComment] = useState('')
   const [reviewedWith, setReviewedWith] = useState('')
   const [loading, setLoading] = useState(false)
@@ -42,6 +43,14 @@ export default function TaskDetailPage() {
     setCalEvents(c.data ?? [])
     if (t.data?.due_date) setEventDate(t.data.due_date)
     await loadAttachments()
+
+    // Buscar si este task está vinculado a un seguimiento CRM
+    const { data: followup } = await supabase
+      .from('crm_followups')
+      .select('*, crm_clients(id, solicitante)')
+      .eq('task_id', id)
+      .single()
+    setCrmFollowup(followup)
   }
 
   useEffect(() => { load() }, [id])
@@ -102,8 +111,7 @@ export default function TaskDetailPage() {
     } else if (result.success) {
       toast.success('Evento creado en Google Calendar')
       if (result.htmlLink) window.open(result.htmlLink, '_blank')
-      setCalMode('none')
-      load()
+      setCalMode('none'); load()
     } else {
       toast.error(result.error ?? 'Error al crear evento')
     }
@@ -113,9 +121,7 @@ export default function TaskDetailPage() {
     if (!eventDate || !eventTime) return toast.error('Selecciona fecha y hora')
     const result = await rescheduleEvent(id!, eventDate, eventTime)
     if (result.success) {
-      toast.success('Evento reagendado en Google Calendar')
-      setCalMode('none')
-      load()
+      toast.success('Evento reagendado'); setCalMode('none'); load()
     } else {
       toast.error(result.error ?? 'Error al reagendar')
     }
@@ -123,12 +129,8 @@ export default function TaskDetailPage() {
 
   const handleCancel = async () => {
     const result = await cancelEvent(id!)
-    if (result.success) {
-      toast.success('Evento eliminado de Google Calendar')
-      load()
-    } else {
-      toast.error(result.error ?? 'Error al eliminar evento')
-    }
+    if (result.success) { toast.success('Evento eliminado'); load() }
+    else toast.error(result.error ?? 'Error')
   }
 
   if (!task) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
@@ -143,13 +145,38 @@ export default function TaskDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <button onClick={() => nav('/tasks')} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">← Volver</button>
+      <button onClick={() => nav('/tasks')}
+        className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
+        ← Volver
+      </button>
+
+      {/* Vinculación CRM — banner visible si viene del CRM */}
+      {crmFollowup && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl px-5 py-3 mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-0.5">Vinculado a CRM</p>
+            <p className="text-sm text-teal-800 font-medium">
+              {crmFollowup.crm_clients?.solicitante}
+            </p>
+            <p className="text-xs text-teal-600">
+              Seguimiento: {crmFollowup.tipo?.replace('_', ' ')} · {crmFollowup.estatus?.replace('_', ' ')}
+            </p>
+          </div>
+          <Link
+            to={`/crm/${crmFollowup.client_id}/followup/${crmFollowup.id}`}
+            className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700 flex-shrink-0">
+            Ver en CRM →
+          </Link>
+        </div>
+      )}
 
       {/* Info del pendiente */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <div className="flex justify-between items-start mb-3">
           <h1 className="text-xl font-bold text-gray-800">{task.title}</h1>
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${priorityColor[task.priority]}`}>{task.priority}</span>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${priorityColor[task.priority]}`}>
+            {task.priority}
+          </span>
         </div>
         {task.description && <p className="text-sm text-gray-500 mb-3">{task.description}</p>}
         <div className="text-xs text-gray-400 space-y-1">
@@ -163,7 +190,6 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        {/* Botones de acción */}
         <div className="flex gap-2 mt-4 flex-wrap">
           {task.status !== 'completado' && (
             <button onClick={handleComplete} disabled={loading}
@@ -185,8 +211,11 @@ export default function TaskDetailPage() {
           )}
           {hasCalendarEvent && calMode === 'none' && (
             <>
-              <button onClick={() => { setCalMode('reschedule'); setEventDate(activeEvent.event_date.split('T')[0]); setEventTime(activeEvent.event_date.split('T')[1]?.slice(0,5) ?? '09:00') }}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+              <button onClick={() => {
+                setCalMode('reschedule')
+                setEventDate(activeEvent.event_date.split('T')[0])
+                setEventTime(activeEvent.event_date.split('T')[1]?.slice(0, 5) ?? '09:00')
+              }} className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
                 📅 Reagendar
               </button>
               <button onClick={handleCancel} disabled={calLoading}
@@ -197,11 +226,10 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        {/* Formulario crear/reagendar Calendar */}
         {(calMode === 'create' || calMode === 'reschedule') && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm font-medium text-blue-700 mb-3">
-              {calMode === 'create' ? 'Selecciona fecha y hora del recordatorio' : 'Nueva fecha y hora del evento'}
+              {calMode === 'create' ? 'Selecciona fecha y hora del recordatorio' : 'Nueva fecha y hora'}
             </p>
             <div className="flex gap-3 mb-3">
               <div className="flex-1">
@@ -233,20 +261,22 @@ export default function TaskDetailPage() {
 
       {/* Archivos adjuntos */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-        <FileUploader
-          taskId={id!}
-          attachments={attachments}
-          onRefresh={loadAttachments} />
+        <FileUploader taskId={id!} attachments={attachments} onRefresh={loadAttachments} />
       </div>
 
       {/* Seguimiento */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <h2 className="font-semibold text-gray-700 mb-4">Agregar seguimiento</h2>
-        <textarea className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm h-20 resize-none outline-none focus:border-teal-400 mb-3"
-          placeholder="Comentario u observación" value={comment} onChange={e => setComment(e.target.value)} />
-        <input className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-teal-400 mb-3"
-          placeholder="Con quién se revisó (opcional)" value={reviewedWith} onChange={e => setReviewedWith(e.target.value)} />
-        <button onClick={addHistory} className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+        <textarea
+          className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm h-20 resize-none outline-none focus:border-teal-400 mb-3"
+          placeholder="Comentario u observación" value={comment}
+          onChange={e => setComment(e.target.value)} />
+        <input
+          className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-teal-400 mb-3"
+          placeholder="Con quién se revisó (opcional)" value={reviewedWith}
+          onChange={e => setReviewedWith(e.target.value)} />
+        <button onClick={addHistory}
+          className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
           Agregar
         </button>
       </div>
