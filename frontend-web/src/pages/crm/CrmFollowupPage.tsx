@@ -11,7 +11,7 @@ export default function CrmFollowupPage() {
   const [client, setClient] = useState<any>(null)
   const [recipients, setRecipients] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
-  const [followup, setFollowup] = useState<any>(null)
+  // followup state removed
   const [materials, setMaterials] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -33,7 +33,6 @@ export default function CrmFollowupPage() {
 
     if (!isNew && followupId) {
       supabase.from('crm_followups').select('*').eq('id', followupId).single().then(({ data }) => {
-        setFollowup(data)
         if (data) setForm(data)
       })
       supabase.from('crm_materials').select('*').eq('followup_id', followupId).then(({ data }) => setMaterials(data ?? []))
