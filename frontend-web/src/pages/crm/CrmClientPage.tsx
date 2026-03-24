@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'pendientes'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'pedidos' | 'pendientes'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -12,35 +12,33 @@ export default function CrmClientPage() {
   const [recipients, setRecipients] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
   const [followups, setFollowups] = useState<any[]>([])
+  const [orders, setOrders] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
   const [tab, setTab] = useState<Tab>('info')
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<any>({})
-
-  // Formulario nuevo contacto
   const [showContactForm, setShowContactForm] = useState(false)
   const [contactForm, setContactForm] = useState({ nombre: '', puesto: '', telefono: '', correo: '', comentarios: '' })
-
-  // Nuevo teléfono/correo
   const [newPhone, setNewPhone] = useState('')
   const [newEmail, setNewEmail] = useState('')
 
   const load = async () => {
-    const [c, r, co, f] = await Promise.all([
+    const [c, r, co, f, o] = await Promise.all([
       supabase.from('crm_clients').select('*').eq('id', id).single(),
       supabase.from('crm_recipients').select('*').eq('client_id', id).order('destinatario'),
       supabase.from('crm_contacts').select('*').eq('client_id', id).order('nombre'),
       supabase.from('crm_followups').select('*').eq('client_id', id).order('created_at', { ascending: false }),
+      supabase.from('crm_orders').select('*, crm_order_items(count), crm_cedis_requests(count)')
+        .eq('client_id', id).order('created_at', { ascending: false }),
     ])
-    setClient(c.data)
-    setForm(c.data ?? {})
+    setClient(c.data); setForm(c.data ?? {})
     setRecipients(r.data ?? [])
     setContacts(co.data ?? [])
     setFollowups(f.data ?? [])
+    setOrders(o.data ?? [])
 
-    // Cargar pendientes relacionados
     if (f.data && f.data.length > 0) {
-      const taskIds = f.data.map(x => x.task_id).filter(Boolean)
+      const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)
       if (taskIds.length > 0) {
         const { data: t } = await supabase.from('tasks').select('*').in('id', taskIds)
         setTasks(t ?? [])
@@ -52,14 +50,9 @@ export default function CrmClientPage() {
 
   const saveClient = async () => {
     const { error } = await supabase.from('crm_clients').update({
-      solicitante:    form.solicitante,
-      razon_social:   form.razon_social,
-      rfc:            form.rfc,
-      poblacion:      form.poblacion,
-      estado:         form.estado,
-      pais:           form.pais,
-      ramo:           form.ramo,
-      centro:         form.centro,
+      solicitante: form.solicitante, razon_social: form.razon_social,
+      rfc: form.rfc, poblacion: form.poblacion, estado: form.estado,
+      pais: form.pais, ramo: form.ramo, centro: form.centro,
       gpo_vendedores: form.gpo_vendedores,
     }).eq('id', id)
     if (error) toast.error(error.message)
@@ -68,29 +61,23 @@ export default function CrmClientPage() {
 
   const addPhone = async () => {
     if (!newPhone.trim()) return
-    const updated = [...(client.telefonos ?? []), newPhone.trim()]
-    await supabase.from('crm_clients').update({ telefonos: updated }).eq('id', id)
-    setNewPhone(''); load()
-    toast.success('Teléfono agregado')
+    await supabase.from('crm_clients').update({ telefonos: [...(client.telefonos ?? []), newPhone.trim()] }).eq('id', id)
+    setNewPhone(''); load(); toast.success('Teléfono agregado')
   }
 
   const removePhone = async (phone: string) => {
-    const updated = client.telefonos.filter((t: string) => t !== phone)
-    await supabase.from('crm_clients').update({ telefonos: updated }).eq('id', id)
+    await supabase.from('crm_clients').update({ telefonos: client.telefonos.filter((t: string) => t !== phone) }).eq('id', id)
     load()
   }
 
   const addEmail = async () => {
     if (!newEmail.trim()) return
-    const updated = [...(client.correos ?? []), newEmail.trim()]
-    await supabase.from('crm_clients').update({ correos: updated }).eq('id', id)
-    setNewEmail(''); load()
-    toast.success('Correo agregado')
+    await supabase.from('crm_clients').update({ correos: [...(client.correos ?? []), newEmail.trim()] }).eq('id', id)
+    setNewEmail(''); load(); toast.success('Correo agregado')
   }
 
   const removeEmail = async (email: string) => {
-    const updated = client.correos.filter((e: string) => e !== email)
-    await supabase.from('crm_clients').update({ correos: updated }).eq('id', id)
+    await supabase.from('crm_clients').update({ correos: client.correos.filter((e: string) => e !== email) }).eq('id', id)
     load()
   }
 
@@ -99,14 +86,12 @@ export default function CrmClientPage() {
     await supabase.from('crm_contacts').insert({ ...contactForm, client_id: id })
     setContactForm({ nombre: '', puesto: '', telefono: '', correo: '', comentarios: '' })
     setShowContactForm(false)
-    toast.success('Contacto agregado')
-    load()
+    toast.success('Contacto agregado'); load()
   }
 
   const deleteContact = async (contactId: string) => {
     if (!window.confirm('¿Eliminar este contacto?')) return
-    await supabase.from('crm_contacts').delete().eq('id', contactId)
-    load()
+    await supabase.from('crm_contacts').delete().eq('id', contactId); load()
   }
 
   if (!client) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
@@ -116,6 +101,7 @@ export default function CrmClientPage() {
     { key: 'destinatarios', label: `Destinatarios (${recipients.length})` },
     { key: 'contactos', label: `Contactos (${contacts.length})` },
     { key: 'seguimientos', label: `Seguimientos (${followups.length})` },
+    { key: 'pedidos', label: `Pedidos (${orders.length})` },
     { key: 'pendientes', label: `Pendientes (${tasks.length})` },
   ]
 
@@ -133,6 +119,15 @@ export default function CrmClientPage() {
     cancelado: 'bg-gray-100 text-gray-500',
   }
 
+  const ORDER_COLOR: Record<string, string> = {
+    generado: 'bg-yellow-100 text-yellow-700',
+    confirmado: 'bg-blue-100 text-blue-700',
+    en_proceso: 'bg-purple-100 text-purple-700',
+    enviado: 'bg-orange-100 text-orange-700',
+    entregado: 'bg-green-100 text-green-700',
+    cancelado: 'bg-gray-100 text-gray-500',
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       <button onClick={() => nav('/crm')}
@@ -140,7 +135,6 @@ export default function CrmClientPage() {
         ← Volver a clientes
       </button>
 
-      {/* Header */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <div className="flex justify-between items-start">
           <div>
@@ -160,42 +154,33 @@ export default function CrmClientPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-0 mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-              tab === t.key
-                ? 'border-teal-600 text-teal-600 bg-teal-50'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              tab === t.key ? 'border-teal-600 text-teal-600 bg-teal-50' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* TAB: Info general */}
+      {/* TAB: Info */}
       {tab === 'info' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-semibold text-gray-700">Información general</h2>
-            <button onClick={() => setEditMode(!editMode)}
-              className="text-sm text-teal-600 hover:text-teal-700 font-medium">
+            <button onClick={() => setEditMode(!editMode)} className="text-sm text-teal-600 font-medium">
               {editMode ? 'Cancelar' : 'Editar'}
             </button>
           </div>
-
           {editMode ? (
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Solicitante', key: 'solicitante' },
-                { label: 'Razón Social', key: 'razon_social' },
-                { label: 'RFC', key: 'rfc' },
-                { label: 'Población', key: 'poblacion' },
-                { label: 'Estado', key: 'estado' },
-                { label: 'País', key: 'pais' },
-                { label: 'Ramo', key: 'ramo' },
-                { label: 'Centro', key: 'centro' },
+                { label: 'Solicitante', key: 'solicitante' }, { label: 'Razón Social', key: 'razon_social' },
+                { label: 'RFC', key: 'rfc' }, { label: 'Población', key: 'poblacion' },
+                { label: 'Estado', key: 'estado' }, { label: 'País', key: 'pais' },
+                { label: 'Ramo', key: 'ramo' }, { label: 'Centro', key: 'centro' },
                 { label: 'Gpo. Vendedores', key: 'gpo_vendedores' },
               ].map(f => (
                 <div key={f.key}>
@@ -205,8 +190,7 @@ export default function CrmClientPage() {
                 </div>
               ))}
               <div className="col-span-2">
-                <button onClick={saveClient}
-                  className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+                <button onClick={saveClient} className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
                   Guardar cambios
                 </button>
               </div>
@@ -214,65 +198,50 @@ export default function CrmClientPage() {
           ) : (
             <div className="grid grid-cols-2 gap-y-3 gap-x-8 text-sm">
               {[
-                ['Solicitante', client.solicitante],
-                ['Razón Social', client.razon_social],
-                ['RFC', client.rfc],
-                ['Población', client.poblacion],
-                ['Estado', client.estado],
-                ['País', client.pais],
-                ['Ramo', client.ramo],
-                ['Centro', client.centro],
+                ['Solicitante', client.solicitante], ['Razón Social', client.razon_social],
+                ['RFC', client.rfc], ['Población', client.poblacion],
+                ['Estado', client.estado], ['País', client.pais],
+                ['Ramo', client.ramo], ['Centro', client.centro],
                 ['Gpo. Vendedores', client.gpo_vendedores],
               ].map(([label, val]) => val ? (
-                <div key={label}>
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="font-medium text-gray-700">{val}</p>
-                </div>
+                <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="font-medium text-gray-700">{val}</p></div>
               ) : null)}
             </div>
           )}
 
-          {/* Teléfonos */}
           <div className="mt-6 pt-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Teléfonos</h3>
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.telefonos ?? []).map((t: string) => (
                 <span key={t} className="flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
-                  {t}
-                  <button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  {t}<button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
-              {(client.telefonos ?? []).length === 0 && <span className="text-sm text-gray-400">Sin teléfonos</span>}
+              {!(client.telefonos ?? []).length && <span className="text-sm text-gray-400">Sin teléfonos</span>}
             </div>
             <div className="flex gap-2">
               <input className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400"
                 placeholder="Nuevo teléfono" value={newPhone} onChange={e => setNewPhone(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addPhone()} />
-              <button onClick={addPhone} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">
-                Agregar
-              </button>
+              <button onClick={addPhone} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">Agregar</button>
             </div>
           </div>
 
-          {/* Correos */}
           <div className="mt-4 pt-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Correos</h3>
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.correos ?? []).map((e: string) => (
                 <span key={e} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full">
-                  {e}
-                  <button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  {e}<button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
-              {(client.correos ?? []).length === 0 && <span className="text-sm text-gray-400">Sin correos</span>}
+              {!(client.correos ?? []).length && <span className="text-sm text-gray-400">Sin correos</span>}
             </div>
             <div className="flex gap-2">
               <input className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400"
                 placeholder="Nuevo correo" value={newEmail} onChange={e => setNewEmail(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addEmail()} />
-              <button onClick={addEmail} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">
-                Agregar
-              </button>
+              <button onClick={addEmail} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">Agregar</button>
             </div>
           </div>
         </div>
@@ -308,14 +277,11 @@ export default function CrmClientPage() {
               + Agregar contacto
             </button>
           </div>
-
           {showContactForm && (
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3">
               {[
-                { label: 'Nombre *', key: 'nombre', required: true },
-                { label: 'Puesto / Área', key: 'puesto' },
-                { label: 'Teléfono', key: 'telefono' },
-                { label: 'Correo', key: 'correo' },
+                { label: 'Nombre *', key: 'nombre' }, { label: 'Puesto / Área', key: 'puesto' },
+                { label: 'Teléfono', key: 'telefono' }, { label: 'Correo', key: 'correo' },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
@@ -327,25 +293,15 @@ export default function CrmClientPage() {
               <div className="col-span-2">
                 <label className="text-xs text-gray-500 mb-1 block">Comentarios</label>
                 <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white h-16 resize-none outline-none focus:border-teal-400"
-                  value={contactForm.comentarios}
-                  onChange={e => setContactForm(x => ({ ...x, comentarios: e.target.value }))} />
+                  value={contactForm.comentarios} onChange={e => setContactForm(x => ({ ...x, comentarios: e.target.value }))} />
               </div>
               <div className="col-span-2 flex gap-2">
-                <button onClick={addContact}
-                  className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-                  Guardar contacto
-                </button>
-                <button onClick={() => setShowContactForm(false)}
-                  className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">
-                  Cancelar
-                </button>
+                <button onClick={addContact} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">Guardar</button>
+                <button onClick={() => setShowContactForm(false)} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">Cancelar</button>
               </div>
             </div>
           )}
-
-          {contacts.length === 0 && !showContactForm && (
-            <p className="text-sm text-gray-400">Sin contactos registrados.</p>
-          )}
+          {contacts.length === 0 && !showContactForm && <p className="text-sm text-gray-400">Sin contactos registrados.</p>}
           <div className="space-y-3">
             {contacts.map(c => (
               <div key={c.id} className="flex justify-between items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
@@ -358,10 +314,7 @@ export default function CrmClientPage() {
                   </div>
                   {c.comentarios && <p className="text-xs text-gray-400 mt-1 italic">{c.comentarios}</p>}
                 </div>
-                <button onClick={() => deleteContact(c.id)}
-                  className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50">
-                  Eliminar
-                </button>
+                <button onClick={() => deleteContact(c.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50">Eliminar</button>
               </div>
             ))}
           </div>
@@ -373,10 +326,7 @@ export default function CrmClientPage() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
             <h2 className="font-semibold text-gray-700">Historial de seguimientos</h2>
-            <Link to={`/crm/${id}/followup/new`}
-              className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
-              + Nuevo
-            </Link>
+            <Link to={`/crm/${id}/followup/new`} className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">+ Nuevo</Link>
           </div>
           {followups.length === 0 && <p className="text-sm text-gray-400 p-6">Sin seguimientos.</p>}
           {followups.map(f => (
@@ -401,6 +351,37 @@ export default function CrmClientPage() {
         </div>
       )}
 
+      {/* TAB: Pedidos */}
+      {tab === 'pedidos' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {orders.length === 0 && <p className="text-sm text-gray-400 p-6">Sin pedidos registrados.</p>}
+          {orders.map(o => (
+            <div key={o.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-bold text-gray-800">Pedido: {o.numero_pedido}</p>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${ORDER_COLOR[o.estatus]}`}>
+                    {o.estatus}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleDateString('es-MX')}</p>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-400">
+                <span>{o.crm_order_items?.[0]?.count ?? 0} material(es)</span>
+                <span>{o.crm_cedis_requests?.[0]?.count ?? 0} req. CEDIS</span>
+              </div>
+              {o.comentarios && <p className="text-xs text-gray-500 mt-1">{o.comentarios}</p>}
+              <div className="flex gap-2 mt-3">
+                <Link to={`/crm/${id}/order/${o.id}/cedis`}
+                  className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700">
+                  Ver / Crear requerimiento CEDIS
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* TAB: Pendientes */}
       {tab === 'pendientes' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -415,8 +396,7 @@ export default function CrmClientPage() {
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                 t.priority === 'alta' ? 'bg-red-100 text-red-700' :
                 t.priority === 'media' ? 'bg-yellow-100 text-yellow-700' :
-                'bg-green-100 text-green-700'
-              }`}>{t.priority}</span>
+                'bg-green-100 text-green-700'}`}>{t.priority}</span>
             </Link>
           ))}
         </div>
