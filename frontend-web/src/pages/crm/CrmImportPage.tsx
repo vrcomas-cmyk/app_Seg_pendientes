@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { parseExcelFile, ClientImport } from '../../utils/importClients'
+import { parseExcelFile } from '../../utils/importClients'
+import type { ClientImport } from '../../utils/importClients'
 import toast from 'react-hot-toast'
 
 export default function CrmImportPage() {
