@@ -1,7 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+
+const PAGE_SIZE = 500
 
 const SUGG_COLS = [
   { key: 'gpo_cliente',            label: 'Gpo. Cte.' },
@@ -37,11 +39,11 @@ const SUGG_COLS = [
   { key: 'meses_inventario',       label: 'Meses_Inventario' },
   { key: 'promedio_consumo_12m',   label: 'Promedio_Consumo_12M' },
   { key: 'cant_transito',          label: 'Cant. en Tránsito' },
-  { key: 'cant_transito_1030',     label: 'Cant. en Tránsito 1030' },
-  { key: 'cant_transito_1031',     label: 'Cant. en Tránsito 1031' },
-  { key: 'cant_transito_1032',     label: 'Cant. en Tránsito 1032' },
-  { key: 'disp_1031_1030',         label: 'Disponible 1031-1030' },
-  { key: 'disp_1031_1032',         label: 'Disponible 1031-1032' },
+  { key: 'cant_transito_1030',     label: 'Cant. Tránsito 1030' },
+  { key: 'cant_transito_1031',     label: 'Cant. Tránsito 1031' },
+  { key: 'cant_transito_1032',     label: 'Cant. Tránsito 1032' },
+  { key: 'disp_1031_1030',         label: 'Disp 1031-1030' },
+  { key: 'disp_1031_1032',         label: 'Disp 1031-1032' },
   { key: 'inv_1001',               label: 'Inv 1001' },
   { key: 'inv_1003',               label: 'Inv 1003' },
   { key: 'inv_1004',               label: 'Inv 1004' },
@@ -62,12 +64,12 @@ const CONS_COLS = [
   { key: 'material',                   label: 'Material' },
   { key: 'texto_material',             label: 'Texto Material' },
   { key: 'ultima_compra_cliente',      label: 'Ultima_compra_cliente' },
-  { key: 'ultima_facturacion_dest',    label: 'Ultima_facturacion_destinatario' },
+  { key: 'ultima_facturacion_dest',    label: 'Ultima_facturacion_dest' },
   { key: 'consumo_promedio_mensual',   label: 'Consumo_promedio_mensual' },
   { key: 'consumo_actual',             label: 'Consumo_actual' },
   { key: 'um',                         label: 'UM' },
   { key: 'tendencia',                  label: 'Tendencia' },
-  { key: 'tendencia_cantidad',         label: 'Tendencia de cantidad' },
+  { key: 'tendencia_cantidad',         label: 'Tendencia cantidad' },
   { key: 'ultimo_mes_facturacion',     label: 'Ultimo mes facturacion' },
   { key: 'cantidad_ultima',            label: 'Cantidad ultima' },
   { key: 'importe_ultima',             label: 'Importe ultima' },
@@ -95,11 +97,11 @@ const CONS_COLS = [
   { key: 'meses_inventario',           label: 'Meses_Inventario' },
   { key: 'promedio_consumo_12m',       label: 'Promedio_Consumo_12M' },
   { key: 'cant_transito',              label: 'Cant. en Tránsito' },
-  { key: 'cant_transito_1030',         label: 'Cant. en Tránsito 1030' },
-  { key: 'cant_transito_1031',         label: 'Cant. en Tránsito 1031' },
-  { key: 'cant_transito_1032',         label: 'Cant. en Tránsito 1032' },
-  { key: 'disp_1031_1030',             label: 'Disponible 1031-1030' },
-  { key: 'disp_1031_1032',             label: 'Disponible 1031-1032' },
+  { key: 'cant_transito_1030',         label: 'Cant. Tránsito 1030' },
+  { key: 'cant_transito_1031',         label: 'Cant. Tránsito 1031' },
+  { key: 'cant_transito_1032',         label: 'Cant. Tránsito 1032' },
+  { key: 'disp_1031_1030',             label: 'Disp 1031-1030' },
+  { key: 'disp_1031_1032',             label: 'Disp 1031-1032' },
   { key: 'inv_1001',                   label: 'Inv 1001' },
   { key: 'inv_1003',                   label: 'Inv 1003' },
   { key: 'inv_1004',                   label: 'Inv 1004' },
@@ -114,77 +116,119 @@ type TabType = 'suggestions' | 'consumption'
 export default function CrmReportsPage() {
   const nav = useNavigate()
   const [tab, setTab] = useState<TabType>('suggestions')
-  const [data, setData] = useState<any[]>([])
-  const [filtered, setFiltered] = useState<any[]>([])
+  const [rows, setRows] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [creatingOffer, setCreatingOffer] = useState(false)
 
-  // Filtros
+  // Opciones para selectores (cargadas una sola vez por tab)
+  const [fuentes, setFuentes] = useState<string[]>([])
+  const [centros, setCentros] = useState<string[]>([])
+  const [solicitantes, setSolicitantes] = useState<string[]>([])
+
+  // Filtros — se aplican en servidor
   const [search, setSearch] = useState('')
   const [fuente, setFuente] = useState('')
   const [centro, setCentro] = useState('')
   const [solicitante, setSolicitante] = useState('')
   const [soloDisponibles, setSoloDisponibles] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setSelected([])
+  // Debounce del search
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => setDebouncedSearch(search), 400)
+  }, [search])
+
+  // Cargar opciones de filtro (distinct values) — solo al cambiar tab
+  useEffect(() => {
     const table = tab === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
-    let allRows: any[] = []
-    let page = 0
-    const PAGE_SIZE = 1000
-    while (true) {
-      const { data: chunk } = await supabase.from(table)
-        .select('*')
-        .order(tab === 'suggestions' ? 'fecha' : 'solicitante', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-      if (!chunk || chunk.length === 0) break
-      allRows = [...allRows, ...chunk]
-      if (chunk.length < PAGE_SIZE) break
-      page++
-    }
-    setData(allRows)
-    setFiltered(allRows)
-    setLoading(false)
+    const centroCol = tab === 'suggestions' ? 'centro_pedido' : 'centro'
+    Promise.all([
+      supabase.from(table).select('fuente').not('fuente','is',null).limit(500),
+      supabase.from(table).select(centroCol).not(centroCol,'is',null).limit(200),
+      supabase.from(table).select('solicitante').not('solicitante','is',null).limit(500),
+    ]).then(([f, c, s]) => {
+      setFuentes([...new Set((f.data ?? []).map((r: any) => r.fuente))].sort())
+      setCentros([...new Set((c.data ?? []).map((r: any) => r[centroCol]))].sort())
+      setSolicitantes([...new Set((s.data ?? []).map((r: any) => r.solicitante))].sort())
+    })
   }, [tab])
 
-  useEffect(() => { load() }, [load])
+  // Query con filtros en servidor
+  const buildQuery = useCallback((rangeStart: number) => {
+    const table = tab === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
+    const centroCol = tab === 'suggestions' ? 'centro_pedido' : 'centro'
+    const matCol = tab === 'suggestions' ? 'material_solicitado' : 'material'
+    const descCol = tab === 'suggestions' ? 'descripcion_solicitada' : 'texto_material'
 
-  // Aplicar filtros
-  useEffect(() => {
-    let result = data
-    if (search) {
-      const s = search.toLowerCase()
-      result = result.filter(r =>
-        Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s))
+    let q = supabase.from(table).select('*', { count: 'exact' })
+      .order(tab === 'suggestions' ? 'fecha' : 'solicitante', { ascending: false })
+      .range(rangeStart, rangeStart + PAGE_SIZE - 1)
+
+    if (fuente)     q = q.eq('fuente', fuente)
+    if (centro)     q = q.eq(centroCol, centro)
+    if (solicitante) q = q.eq('solicitante', solicitante)
+    if (soloDisponibles) q = q.gt('disponible', 0)
+    if (debouncedSearch) {
+      q = q.or(
+        `${matCol}.ilike.%${debouncedSearch}%,` +
+        `${descCol}.ilike.%${debouncedSearch}%,` +
+        `solicitante.ilike.%${debouncedSearch}%,` +
+        (tab === 'suggestions' ? `pedido.ilike.%${debouncedSearch}%,` : '') +
+        `destinatario.ilike.%${debouncedSearch}%`
       )
     }
-    if (fuente) result = result.filter(r => r.fuente === fuente)
-    if (centro) result = result.filter(r =>
-      (tab === 'suggestions' ? r.centro_pedido : r.centro) === centro
-    )
-    if (solicitante) result = result.filter(r => r.solicitante === solicitante)
-    if (soloDisponibles) result = result.filter(r => (r.disponible ?? 0) > 0)
-    setFiltered(result)
-  }, [search, fuente, centro, solicitante, soloDisponibles, data])
+    return q
+  }, [tab, fuente, centro, solicitante, soloDisponibles, debouncedSearch])
 
-  const fuentes      = [...new Set(data.map(r => r.fuente).filter(Boolean))].sort()
-  const centros      = [...new Set(data.map(r => tab === 'suggestions' ? r.centro_pedido : r.centro).filter(Boolean))].sort()
-  const solicitantes = [...new Set(data.map(r => r.solicitante).filter(Boolean))].sort()
+  // Carga inicial (reset)
+  useEffect(() => {
+    setLoading(true)
+    setRows([])
+    setPage(0)
+    setSelected([])
+    buildQuery(0).then(({ data, count, error }) => {
+      if (error) console.error(error)
+      setRows(data ?? [])
+      setTotal(count ?? 0)
+      setHasMore((data?.length ?? 0) === PAGE_SIZE)
+      setLoading(false)
+    })
+  }, [tab, fuente, centro, solicitante, soloDisponibles, debouncedSearch])
+
+  const loadMore = async () => {
+    setLoadingMore(true)
+    const nextPage = page + 1
+    const { data } = await buildQuery(nextPage * PAGE_SIZE)
+    setRows(prev => [...prev, ...(data ?? [])])
+    setPage(nextPage)
+    setHasMore((data?.length ?? 0) === PAGE_SIZE)
+    setLoadingMore(false)
+  }
 
   const toggleRow = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   const toggleAll = () =>
-    setSelected(prev => prev.length === filtered.length ? [] : filtered.map(r => r.id))
+    setSelected(prev => prev.length === rows.length ? [] : rows.map(r => r.id))
+
+  const clearFilters = () => {
+    setSearch(''); setFuente(''); setCentro(''); setSolicitante(''); setSoloDisponibles(false)
+  }
+
+  const hasFilters = search || fuente || centro || solicitante || soloDisponibles
 
   const createOffersFromSelection = async () => {
     if (selected.length === 0) return
     setCreatingOffer(true)
-
-    // Agrupar seleccionados por client_id
-    const selectedRows = filtered.filter(r => selected.includes(r.id))
+    const selectedRows = rows.filter(r => selected.includes(r.id))
     const byClient: Record<string, any[]> = {}
     const noClient: any[] = []
 
@@ -197,11 +241,10 @@ export default function CrmReportsPage() {
       }
     }
 
-    // Si hay filas sin client_id, intentar buscar el cliente por solicitante
     if (noClient.length > 0) {
-      const solicitantesSinCliente = [...new Set(noClient.map(r => r.solicitante).filter(Boolean))]
+      const solicitantesSin = [...new Set(noClient.map(r => r.solicitante).filter(Boolean))]
       const { data: clients } = await supabase.from('crm_clients')
-        .select('id, solicitante').in('solicitante', solicitantesSinCliente)
+        .select('id, solicitante').in('solicitante', solicitantesSin)
       const map: Record<string, string> = {}
       clients?.forEach(c => { map[c.solicitante] = c.id })
       for (const row of noClient) {
@@ -215,7 +258,7 @@ export default function CrmReportsPage() {
 
     const clientIds = Object.keys(byClient)
     if (clientIds.length === 0) {
-      toast.error('Ninguno de los materiales está vinculado a un cliente. Importa primero la base de clientes.')
+      toast.error('Ningún material está vinculado a un cliente. Importa la base de clientes primero.')
       setCreatingOffer(false)
       return
     }
@@ -224,54 +267,47 @@ export default function CrmReportsPage() {
     let offersCreated = 0
 
     for (const clientId of clientIds) {
-      const rows = byClient[clientId]
-      // Crear oferta
+      const clientRows = byClient[clientId]
       const { data: offer, error } = await supabase.from('crm_offers').insert({
-        client_id:  clientId,
-        tipo:       tab === 'suggestions' ? 'sugerencia' : 'consumo',
-        estatus:    'borrador',
-        notas:      `Generada desde reporte global · ${new Date().toLocaleDateString('es-MX')}`,
+        client_id: clientId,
+        tipo: tab === 'suggestions' ? 'sugerencia' : 'consumo',
+        estatus: 'borrador',
+        notas: `Generada desde reporte global · ${new Date().toLocaleDateString('es-MX')}`,
         created_by: user?.id,
       }).select().single()
 
       if (error || !offer) continue
 
-      // Crear items
-      const items = rows.map(r => ({
-        offer_id:          offer.id,
-        source_type:       tab === 'suggestions' ? 'sugerencia' : 'consumo',
-        source_id:         r.id,
-        material:          tab === 'suggestions' ? (r.material_sugerido ?? r.material_solicitado) : r.material,
-        descripcion:       tab === 'suggestions' ? (r.descripcion_sugerida ?? r.descripcion_solicitada) : r.texto_material,
-        lotes:             r.lote ? [{ lote: r.lote, fecha_caducidad: r.fecha_caducidad ?? '' }] : [],
-        cantidad_ofertada: tab === 'suggestions' ? (r.cantidad_pendiente ?? r.cantidad_ofertar) : null,
-        precio_oferta:     r.precio ?? r.precio_unitario_ultima ?? null,
-        um:                r.um ?? null,
-        numero_pedido:     tab === 'suggestions' ? (r.pedido ?? null) : null,
-        pedido_existente:  tab === 'suggestions',
-        pedido_pendiente:  tab === 'consumption',
-        centro_origen:     r.centro_sugerido ?? null,
-        almacen_origen:    r.almacen_sugerido ?? null,
-        centro_destino:    tab === 'suggestions' ? (r.centro_pedido ?? null) : (r.centro ?? null),
-        almacen_destino:   r.almacen ?? null,
-        requiere_traslado: false,
-        aceptado:          false,
-        estatus:           'ofertado',
-      }))
-
-      await supabase.from('crm_offer_items').insert(items)
+      await supabase.from('crm_offer_items').insert(
+        clientRows.map(r => ({
+          offer_id:          offer.id,
+          source_type:       tab === 'suggestions' ? 'sugerencia' : 'consumo',
+          source_id:         r.id,
+          material:          tab === 'suggestions' ? (r.material_sugerido ?? r.material_solicitado) : r.material,
+          descripcion:       tab === 'suggestions' ? (r.descripcion_sugerida ?? r.descripcion_solicitada) : r.texto_material,
+          lotes:             r.lote ? [{ lote: r.lote, fecha_caducidad: r.fecha_caducidad ?? '' }] : [],
+          cantidad_ofertada: tab === 'suggestions' ? (r.cantidad_pendiente ?? r.cantidad_ofertar) : null,
+          precio_oferta:     r.precio ?? r.precio_unitario_ultima ?? null,
+          um:                r.um ?? null,
+          numero_pedido:     tab === 'suggestions' ? (r.pedido ?? null) : null,
+          pedido_existente:  tab === 'suggestions',
+          pedido_pendiente:  tab === 'consumption',
+          centro_origen:     r.centro_sugerido ?? null,
+          almacen_origen:    r.almacen_sugerido ?? null,
+          centro_destino:    tab === 'suggestions' ? (r.centro_pedido ?? null) : (r.centro ?? null),
+          almacen_destino:   r.almacen ?? null,
+          requiere_traslado: false,
+          aceptado:          false,
+          estatus:           'ofertado',
+        }))
+      )
       offersCreated++
     }
 
-    toast.success(`${offersCreated} oferta(s) generada(s) — una por cliente`)
+    toast.success(`${offersCreated} oferta(s) generada(s)`)
     setSelected([])
-
-    // Si solo hay un cliente, ir directo a su ficha
-    if (clientIds.length === 1) {
-      nav(`/crm/${clientIds[0]}`)
-    } else {
-      nav('/crm/offers')
-    }
+    if (clientIds.length === 1) nav(`/crm/${clientIds[0]}`)
+    else nav('/crm/offers')
     setCreatingOffer(false)
   }
 
@@ -279,7 +315,7 @@ export default function CrmReportsPage() {
 
   return (
     <div className="max-w-full mx-auto px-4">
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <button onClick={() => nav('/crm')} className="text-sm text-gray-400 hover:text-gray-600">← CRM</button>
@@ -287,14 +323,14 @@ export default function CrmReportsPage() {
             <h1 className="text-xl font-bold text-gray-800">Reportes globales</h1>
           </div>
           <p className="text-sm text-gray-400">
-            {filtered.length} de {data.length} registros
+            {loading ? 'Cargando...' : `${rows.length} de ${total} registros`}
             {selected.length > 0 && ` · ${selected.length} seleccionados`}
           </p>
         </div>
         {selected.length > 0 && (
           <button onClick={createOffersFromSelection} disabled={creatingOffer}
             className="bg-teal-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-            {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length} material(es)`}
+            {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length} seleccionado(s)`}
           </button>
         )}
       </div>
@@ -315,7 +351,7 @@ export default function CrmReportsPage() {
       <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-3 flex flex-wrap gap-2 items-center">
         <input
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 flex-1 min-w-48"
-          placeholder="Buscar en cualquier columna..."
+          placeholder="Buscar en material, descripción, solicitante, destinatario..."
           value={search} onChange={e => setSearch(e.target.value)} />
         <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
           value={solicitante} onChange={e => setSolicitante(e.target.value)}>
@@ -341,8 +377,8 @@ export default function CrmReportsPage() {
             onChange={e => setSoloDisponibles(e.target.checked)} />
           Solo disponible &gt; 0
         </label>
-        {(search || fuente || centro || solicitante || soloDisponibles) && (
-          <button onClick={() => { setSearch(''); setFuente(''); setCentro(''); setSolicitante(''); setSoloDisponibles(false) }}
+        {hasFilters && (
+          <button onClick={clearFilters}
             className="text-xs text-red-400 hover:text-red-600 font-medium px-2">
             Limpiar ×
           </button>
@@ -351,64 +387,85 @@ export default function CrmReportsPage() {
 
       {/* Tabla */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading && <p className="text-sm text-gray-400 p-6">Cargando...</p>}
-        {!loading && filtered.length === 0 && (
-          <p className="text-sm text-gray-400 p-6 text-center">No hay registros con estos filtros.</p>
+        {loading && (
+          <div className="p-8 text-center">
+            <p className="text-sm text-gray-400">Cargando registros...</p>
+          </div>
         )}
-        {!loading && filtered.length > 0 && (
-          <div className="overflow-auto" style={{ maxHeight: '70vh' }}>
-            <table className="text-xs border-collapse" style={{ minWidth: 'max-content', width: '100%' }}>
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2.5 border-b border-gray-200 w-8 sticky left-0 bg-gray-50 z-20">
-                    <input type="checkbox"
-                      checked={selected.length === filtered.length && filtered.length > 0}
-                      onChange={toggleAll} />
-                  </th>
-                  {cols.map(c => (
-                    <th key={c.key}
-                      className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">
-                      {c.label}
+        {!loading && rows.length === 0 && (
+          <p className="text-sm text-gray-400 p-6 text-center">
+            No hay registros con estos filtros.
+          </p>
+        )}
+        {!loading && rows.length > 0 && (
+          <>
+            <div className="overflow-auto" style={{ maxHeight: '65vh' }}>
+              <table className="text-xs border-collapse" style={{ minWidth: 'max-content', width: '100%' }}>
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2.5 border-b border-gray-200 w-8 sticky left-0 bg-gray-50 z-20">
+                      <input type="checkbox"
+                        checked={selected.length > 0 && selected.length === rows.length}
+                        onChange={toggleAll} />
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(row => (
-                  <tr key={row.id}
-                    onClick={() => toggleRow(row.id)}
-                    className={`border-b border-gray-100 cursor-pointer transition ${
-                      selected.includes(row.id) ? 'bg-teal-50' : 'hover:bg-gray-50'
-                    }`}>
-                    <td className="px-3 py-2 text-center sticky left-0 bg-inherit" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={selected.includes(row.id)}
-                        onChange={() => toggleRow(row.id)} />
-                    </td>
                     {cols.map(c => (
-                      <td key={c.key} className="px-3 py-2 whitespace-nowrap text-gray-700">
-                        {row[c.key] !== null && row[c.key] !== undefined && row[c.key] !== ''
-                          ? String(row[c.key])
-                          : <span className="text-gray-300">—</span>
-                        }
-                      </td>
+                      <th key={c.key}
+                        className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">
+                        {c.label}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {selected.length > 0 && (
-          <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex justify-between items-center">
-            <p className="text-sm text-teal-700 font-medium">
-              {selected.length} material(es) seleccionado(s)
-              {' · '}Los materiales de distintos clientes generarán una oferta por cliente.
-            </p>
-            <button onClick={createOffersFromSelection} disabled={creatingOffer}
-              className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-              {creatingOffer ? 'Generando...' : 'Generar oferta(s)'}
-            </button>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map(row => (
+                    <tr key={row.id}
+                      onClick={() => toggleRow(row.id)}
+                      className={`border-b border-gray-100 cursor-pointer transition ${
+                        selected.includes(row.id) ? 'bg-teal-50' : 'hover:bg-gray-50'
+                      }`}>
+                      <td className="px-3 py-2 text-center sticky left-0 bg-inherit" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" checked={selected.includes(row.id)}
+                          onChange={() => toggleRow(row.id)} />
+                      </td>
+                      {cols.map(c => (
+                        <td key={c.key} className="px-3 py-2 whitespace-nowrap text-gray-700">
+                          {row[c.key] !== null && row[c.key] !== undefined && row[c.key] !== ''
+                            ? String(row[c.key])
+                            : <span className="text-gray-300">—</span>
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer con cargar más */}
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+              <p className="text-xs text-gray-400">
+                Mostrando {rows.length} de {total} registros
+                {hasFilters && ' (filtrados)'}
+              </p>
+              <div className="flex items-center gap-3">
+                {selected.length > 0 && (
+                  <button onClick={createOffersFromSelection} disabled={creatingOffer}
+                    className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+                    {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length}`}
+                  </button>
+                )}
+                {hasMore && (
+                  <button onClick={loadMore} disabled={loadingMore}
+                    className="border border-gray-200 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50">
+                    {loadingMore ? 'Cargando...' : `Cargar ${PAGE_SIZE} más`}
+                  </button>
+                )}
+                {!hasMore && rows.length > 0 && (
+                  <span className="text-xs text-gray-300">Todos los registros cargados</span>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
