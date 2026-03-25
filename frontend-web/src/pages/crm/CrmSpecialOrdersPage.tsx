@@ -51,17 +51,35 @@ const ESTATUS_OPTIONS = [
 
 // Parsear fecha desde Excel (puede venir como número serial o string)
 function parseExcelDate(val: string): string {
-  if (!val) return ''
-  // Si es número (serial de Excel)
-  const num = parseFloat(val)
+  if (!val?.trim()) return ''
+  const v = val.trim()
+
+  // Formato DD/MM/YYYY (el más común en México)
+  const ddmmyyyy = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (ddmmyyyy) {
+    const [, d, m, y] = ddmmyyyy
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
+  }
+
+  // Formato DD-MM-YYYY
+  const ddmmyyyyDash = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (ddmmyyyyDash) {
+    const [, d, m, y] = ddmmyyyyDash
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
+  }
+
+  // Número serial de Excel
+  const num = parseFloat(v)
   if (!isNaN(num) && num > 1000) {
     const date = new Date((num - 25569) * 86400 * 1000)
     return date.toISOString().split('T')[0]
   }
-  // Si ya viene como fecha legible
-  const d = new Date(val)
+
+  // Ya viene como YYYY-MM-DD u otro formato estándar
+  const d = new Date(v)
   if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
-  return val
+
+  return ''
 }
 
 function parseNumber(val: string): number | null {
