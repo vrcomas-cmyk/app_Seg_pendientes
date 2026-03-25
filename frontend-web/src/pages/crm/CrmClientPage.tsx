@@ -47,7 +47,8 @@ export default function CrmClientPage() {
 
     if (c.data?.solicitante) {
       const solicitante = c.data.solicitante
-      const [sug, con] = await Promise.all([
+      // Cargar sugerencias filtrando las ya aceptadas
+      const [sugRaw, con] = await Promise.all([
         supabase.from('crm_suggestions').select('*')
           .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
           .order('fecha', { ascending: false }),
@@ -55,9 +56,19 @@ export default function CrmClientPage() {
           .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
           .order('created_at', { ascending: false }),
       ])
-      setSuggestions(sug.data ?? [])
+
+      // Filtrar sugerencias ya aceptadas (mismo pedido + mismo material)
+      const { data: accepted } = await supabase
+        .from('crm_accepted_suggestions').select('numero_pedido, material')
+      const acceptedSet = new Set(
+        (accepted ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+      )
+      const filteredSug = (sugRaw.data ?? []).filter(s =>
+        !acceptedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
+        !acceptedSet.has(`${s.pedido}__${s.material_solicitado}`)
+      )
+      setSuggestions(filteredSug)
       setConsumption(con.data ?? [])
-    }
 
     if (f.data && f.data.length > 0) {
       const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)

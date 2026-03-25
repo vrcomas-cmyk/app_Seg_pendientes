@@ -12,9 +12,8 @@ function parseDate(v: any): string | null {
   const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`
   const num = parseFloat(s)
-  if (!isNaN(num) && num > 1000) {
+  if (!isNaN(num) && num > 1000)
     return new Date((num - 25569) * 86400000).toISOString().split('T')[0]
-  }
   const d = new Date(s)
   return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]
 }
@@ -39,24 +38,40 @@ export default function CrmSuggestionsImportPage() {
   const ref1 = useRef<HTMLInputElement>(null)
   const ref2 = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState<FileType | null>(null)
+  const [progress, setProgress] = useState<Record<FileType, string>>({ suggestions: '', consumption: '' })
   const [counts, setCounts] = useState<Record<FileType, number | null>>({ suggestions: null, consumption: null })
 
   const handleFile = async (file: File, type: FileType) => {
     setLoading(type)
+    setProgress(p => ({ ...p, [type]: 'Leyendo archivo...' }))
     try {
       const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
+      setProgress(p => ({ ...p, [type]: 'Parseando filas...' }))
+
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false, sheetRows: 0 })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
       if (!rows.length) { toast.error('El archivo está vacío'); setLoading(null); return }
 
+      setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Borrando anteriores...` }))
+
       const { data: { user } } = await supabase.auth.getUser()
+      const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
-      // Borrar registros anteriores del mismo usuario para hacer reemplazo completo
-      await supabase.from(type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption')
-        .delete().eq('created_by', user?.id)
+      // Borrar en lotes para no timeout
+      let deleted = 0
+      while (true) {
+        const { data: chunk } = await supabase.from(table)
+          .select('id').eq('created_by', user?.id).limit(500)
+        if (!chunk || chunk.length === 0) break
+        await supabase.from(table).delete()
+          .in('id', chunk.map(r => r.id))
+        deleted += chunk.length
+        setProgress(p => ({ ...p, [type]: `Eliminando anteriores... ${deleted}` }))
+      }
 
-      // Buscar clientes para vincular por solicitante
+      // Buscar clientes para vincular
       const { data: clients } = await supabase.from('crm_clients')
         .select('id, solicitante').eq('created_by', user?.id)
       const clientMap: Record<string, string> = {}
@@ -92,30 +107,23 @@ export default function CrmSuggestionsImportPage() {
           lote:                   col(r,'Lote') || null,
           fecha_caducidad:        parseDate(col(r,'Fecha de Caducidad','Fecha Caducidad')),
           centro_inv:             col(r,'Centro (Inv)') || null,
-          inv_1030:               parseNum(col(r,'Inv 1030')),
-          inv_1031:               parseNum(col(r,'Inv 1031')),
-          inv_1032:               parseNum(col(r,'Inv 1032')),
-          inv_1060:               parseNum(col(r,'Inv 1060')),
-          meses_inventario:       parseNum(col(r,'Meses_Inventario','Meses Inventario')),
-          promedio_consumo_12m:   parseNum(col(r,'Promedio_Consumo_12M','Promedio Consumo 12M')),
-          cant_transito:          parseNum(col(r,'Cant. en Tránsito','Cant. en Transito')),
-          cant_transito_1030:     parseNum(col(r,'Cant. en Tránsito 1030','Cant. en Transito 1030')),
-          cant_transito_1031:     parseNum(col(r,'Cant. en Tránsito 1031','Cant. en Transito 1031')),
-          cant_transito_1032:     parseNum(col(r,'Cant. en Tránsito 1032','Cant. en Transito 1032')),
-          disp_1031_1030:         parseNum(col(r,'Disponible 1031-1030')),
-          disp_1031_1032:         parseNum(col(r,'Disponible 1031-1032')),
-          inv_1001:               parseNum(col(r,'Inv 1001')),
-          inv_1003:               parseNum(col(r,'Inv 1003')),
-          inv_1004:               parseNum(col(r,'Inv 1004')),
-          inv_1017:               parseNum(col(r,'Inv 1017')),
-          inv_1018:               parseNum(col(r,'Inv 1018')),
-          inv_1022:               parseNum(col(r,'Inv 1022')),
-          inv_1036:               parseNum(col(r,'Inv 1036')),
-          bloqueado:              parseNum(col(r,'Bloqueado')),
-          client_id:              col(r,'Solicitante') ? (clientMap[col(r,'Solicitante')] ?? null) : null,
-          created_by:             user?.id,
+          inv_1030: parseNum(col(r,'Inv 1030')), inv_1031: parseNum(col(r,'Inv 1031')),
+          inv_1032: parseNum(col(r,'Inv 1032')), inv_1060: parseNum(col(r,'Inv 1060')),
+          meses_inventario:     parseNum(col(r,'Meses_Inventario','Meses Inventario')),
+          promedio_consumo_12m: parseNum(col(r,'Promedio_Consumo_12M')),
+          cant_transito:        parseNum(col(r,'Cant. en Tránsito','Cant. en Transito')),
+          cant_transito_1030:   parseNum(col(r,'Cant. en Tránsito 1030')),
+          cant_transito_1031:   parseNum(col(r,'Cant. en Tránsito 1031')),
+          cant_transito_1032:   parseNum(col(r,'Cant. en Tránsito 1032')),
+          disp_1031_1030:       parseNum(col(r,'Disponible 1031-1030')),
+          disp_1031_1032:       parseNum(col(r,'Disponible 1031-1032')),
+          inv_1001: parseNum(col(r,'Inv 1001')), inv_1003: parseNum(col(r,'Inv 1003')),
+          inv_1004: parseNum(col(r,'Inv 1004')), inv_1017: parseNum(col(r,'Inv 1017')),
+          inv_1018: parseNum(col(r,'Inv 1018')), inv_1022: parseNum(col(r,'Inv 1022')),
+          inv_1036: parseNum(col(r,'Inv 1036')), bloqueado: parseNum(col(r,'Bloqueado')),
+          client_id:  col(r,'Solicitante') ? (clientMap[col(r,'Solicitante')] ?? null) : null,
+          created_by: user?.id,
         })).filter(r => r.solicitante || r.pedido)
-
       } else {
         inserts = rows.map(r => ({
           centro:                    col(r,'Centro') || null,
@@ -127,7 +135,7 @@ export default function CrmSuggestionsImportPage() {
           material:                  col(r,'Material') || null,
           texto_material:            col(r,'Texto Material') || null,
           ultima_compra_cliente:     parseDate(col(r,'Ultima_compra_cliente','Ultima compra cliente')),
-          ultima_facturacion_dest:   parseDate(col(r,'Ultima_facturacion_destinatario','Ultima facturacion destinatario')),
+          ultima_facturacion_dest:   parseDate(col(r,'Ultima_facturacion_destinatario')),
           consumo_promedio_mensual:  parseNum(col(r,'Consumo_promedio_mensual','Consumo promedio mensual')),
           consumo_actual:            parseNum(col(r,'Consumo_actual','Consumo actual')),
           um:                        col(r,'UM') || null,
@@ -138,9 +146,9 @@ export default function CrmSuggestionsImportPage() {
           importe_ultima:            parseNum(col(r,'Importe ultima')),
           precio_unitario_ultima:    parseNum(col(r,'Precio_unitario_ultima','Precio unitario ultima')),
           penultima_fecha:           parseDate(col(r,'Penultima_fecha','Penultima fecha')),
-          cantidad_penultima:        parseNum(col(r,'Cantidad_penultima','Cantidad penultima')),
-          importe_penultima:         parseNum(col(r,'Importe_penultima','Importe penultima')),
-          precio_unitario_penultima: parseNum(col(r,'Precio_unitario_penultima','Precio unitario penultima')),
+          cantidad_penultima:        parseNum(col(r,'Cantidad_penultima')),
+          importe_penultima:         parseNum(col(r,'Importe_penultima')),
+          precio_unitario_penultima: parseNum(col(r,'Precio_unitario_penultima')),
           precio_min:                parseNum(col(r,'precio_min','Precio min')),
           precio_max:                parseNum(col(r,'precio_max','Precio max')),
           precio_prom:               parseNum(col(r,'precio_prom','Precio prom')),
@@ -153,43 +161,41 @@ export default function CrmSuggestionsImportPage() {
           lote:                      col(r,'Lote') || null,
           fecha_caducidad:           parseDate(col(r,'Fecha de Caducidad','Fecha Caducidad')),
           centro_inv:                col(r,'Centro (Inv)') || null,
-          inv_1030:                  parseNum(col(r,'Inv 1030')),
-          inv_1031:                  parseNum(col(r,'Inv 1031')),
-          inv_1032:                  parseNum(col(r,'Inv 1032')),
-          inv_1060:                  parseNum(col(r,'Inv 1060')),
-          meses_inventario:          parseNum(col(r,'Meses_Inventario','Meses Inventario')),
-          promedio_consumo_12m:      parseNum(col(r,'Promedio_Consumo_12M')),
-          cant_transito:             parseNum(col(r,'Cant. en Tránsito','Cant. en Transito')),
-          cant_transito_1030:        parseNum(col(r,'Cant. en Tránsito 1030')),
-          cant_transito_1031:        parseNum(col(r,'Cant. en Tránsito 1031')),
-          cant_transito_1032:        parseNum(col(r,'Cant. en Tránsito 1032')),
-          disp_1031_1030:            parseNum(col(r,'Disponible 1031-1030')),
-          disp_1031_1032:            parseNum(col(r,'Disponible 1031-1032')),
-          inv_1001:                  parseNum(col(r,'Inv 1001')),
-          inv_1003:                  parseNum(col(r,'Inv 1003')),
-          inv_1004:                  parseNum(col(r,'Inv 1004')),
-          inv_1017:                  parseNum(col(r,'Inv 1017')),
-          inv_1018:                  parseNum(col(r,'Inv 1018')),
-          inv_1022:                  parseNum(col(r,'Inv 1022')),
-          inv_1036:                  parseNum(col(r,'Inv 1036')),
-          client_id:                 col(r,'Solicitante') ? (clientMap[col(r,'Solicitante')] ?? null) : null,
-          created_by:                user?.id,
+          inv_1030: parseNum(col(r,'Inv 1030')), inv_1031: parseNum(col(r,'Inv 1031')),
+          inv_1032: parseNum(col(r,'Inv 1032')), inv_1060: parseNum(col(r,'Inv 1060')),
+          meses_inventario:     parseNum(col(r,'Meses_Inventario')),
+          promedio_consumo_12m: parseNum(col(r,'Promedio_Consumo_12M')),
+          cant_transito:        parseNum(col(r,'Cant. en Tránsito','Cant. en Transito')),
+          cant_transito_1030:   parseNum(col(r,'Cant. en Tránsito 1030')),
+          cant_transito_1031:   parseNum(col(r,'Cant. en Tránsito 1031')),
+          cant_transito_1032:   parseNum(col(r,'Cant. en Tránsito 1032')),
+          disp_1031_1030:       parseNum(col(r,'Disponible 1031-1030')),
+          disp_1031_1032:       parseNum(col(r,'Disponible 1031-1032')),
+          inv_1001: parseNum(col(r,'Inv 1001')), inv_1003: parseNum(col(r,'Inv 1003')),
+          inv_1004: parseNum(col(r,'Inv 1004')), inv_1017: parseNum(col(r,'Inv 1017')),
+          inv_1018: parseNum(col(r,'Inv 1018')), inv_1022: parseNum(col(r,'Inv 1022')),
+          inv_1036: parseNum(col(r,'Inv 1036')),
+          client_id:  col(r,'Solicitante') ? (clientMap[col(r,'Solicitante')] ?? null) : null,
+          created_by: user?.id,
         })).filter(r => r.solicitante || r.material)
       }
 
-      // Insertar en lotes de 500
-      const BATCH = 500
+      // Insertar en lotes de 200 para archivos grandes
+      const BATCH = 200
+      let inserted = 0
       for (let i = 0; i < inserts.length; i += BATCH) {
-        const { error } = await supabase
-          .from(type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption')
-          .insert(inserts.slice(i, i + BATCH))
+        const { error } = await supabase.from(table).insert(inserts.slice(i, i + BATCH))
         if (error) { toast.error(error.message); setLoading(null); return }
+        inserted += Math.min(BATCH, inserts.length - i)
+        setProgress(p => ({ ...p, [type]: `Insertando... ${inserted} / ${inserts.length}` }))
       }
 
       setCounts(c => ({ ...c, [type]: inserts.length }))
+      setProgress(p => ({ ...p, [type]: '' }))
       toast.success(`${inserts.length} registros cargados`)
-    } catch (e) {
-      toast.error('Error al leer el archivo')
+    } catch (e: any) {
+      toast.error('Error al leer el archivo: ' + (e?.message ?? ''))
+      console.error(e)
     }
     setLoading(null)
   }
@@ -210,21 +216,25 @@ export default function CrmSuggestionsImportPage() {
           </span>
         )}
       </div>
-      <button
-        onClick={() => inputRef.current?.click()}
-        disabled={loading === type}
+      {progress[type] && (
+        <div className="mb-3 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2">
+          <p className="text-xs text-teal-700 font-medium">{progress[type]}</p>
+        </div>
+      )}
+      <button onClick={() => inputRef.current?.click()} disabled={loading === type}
         className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-        {loading === type ? 'Cargando...' : counts[type] !== null ? 'Reemplazar archivo' : 'Subir archivo .xlsx'}
+        {loading === type ? 'Procesando...' : counts[type] !== null ? 'Reemplazar archivo' : 'Subir archivo .xlsx o .csv'}
       </button>
       <input ref={inputRef} type="file" className="hidden"
-        accept=".xlsx,.xls" onChange={e => {
+        accept=".xlsx,.xls,.csv"
+        onChange={e => {
           const f = e.target.files?.[0]
           if (f) handleFile(f, type)
           if (inputRef.current) inputRef.current.value = ''
         }} />
       <p className="text-xs text-gray-400 mt-2">
-        Al subir un archivo nuevo reemplaza los registros anteriores completos.
-        Se puede subir diariamente.
+        Reemplaza los registros anteriores completos. Para archivos grandes (&gt;50k filas)
+        exporta como CSV desde Excel para mejor rendimiento.
       </p>
     </div>
   )
@@ -236,20 +246,20 @@ export default function CrmSuggestionsImportPage() {
         ← Volver al CRM
       </button>
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Cargar archivos de sugerencias</h1>
-      <p className="text-sm text-gray-400 mb-6">
-        Estos archivos se usan para mostrar sugerencias y oportunidades de consumo
-        en la ficha de cada cliente. Se pueden reemplazar diariamente.
-      </p>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+        <p className="text-sm text-blue-700 font-medium mb-1">💡 Para archivos grandes (+50k filas)</p>
+        <p className="text-xs text-blue-600">
+          En Excel: Archivo → Guardar como → CSV UTF-8. El CSV se procesa más rápido
+          y consume menos memoria en el navegador. Los archivos .xlsx de más de 50MB
+          pueden fallar en el navegador.
+        </p>
+      </div>
       <div className="space-y-4">
-        <FileCard
-          type="suggestions"
-          title='Archivo 1 — "Todas las sugerencias"'
-          description="Pedidos abiertos en SAP con material sugerido. Se muestra en la pestaña Sugerencias SAP de cada cliente."
+        <FileCard type="suggestions" title='Archivo 1 — "Todas las sugerencias"'
+          description="Pedidos abiertos en SAP con material sugerido."
           inputRef={ref1} />
-        <FileCard
-          type="consumption"
-          title='Archivo 2 — "Sug Reporte Consumo"'
-          description="Oportunidades de venta basadas en consumo histórico, sin pedido abierto."
+        <FileCard type="consumption" title='Archivo 2 — "Sug Reporte Consumo"'
+          description="Oportunidades de venta por consumo histórico, sin pedido abierto."
           inputRef={ref2} />
       </div>
     </div>
