@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 import CrmOrderStatusBar from './CrmOrderStatusBar'
 import RecipientsTable from '../../components/RecipientsTable'
 import ContactsTable from '../../components/ContactsTable'
-import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'pedidos' | 'pendientes'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'pedidos' | 'pendientes'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -17,6 +17,8 @@ export default function CrmClientPage() {
   const [followups, setFollowups] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [consumption, setConsumption] = useState<any[]>([])
   const [tab, setTab] = useState<Tab>('info')
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<any>({})
@@ -24,6 +26,9 @@ export default function CrmClientPage() {
   const [contactForm, setContactForm] = useState({ nombre: '', puesto: '', telefono: '', correo: '', comentarios: '' })
   const [newPhone, setNewPhone] = useState('')
   const [newEmail, setNewEmail] = useState('')
+  // Selección para crear oferta
+  const [selectedSugg, setSelectedSugg] = useState<string[]>([])
+  const [selectedCons, setSelectedCons] = useState<string[]>([])
 
   const load = async () => {
     const [c, r, co, f, o] = await Promise.all([
@@ -39,6 +44,20 @@ export default function CrmClientPage() {
     setContacts(co.data ?? [])
     setFollowups(f.data ?? [])
     setOrders(o.data ?? [])
+
+    if (c.data?.solicitante) {
+      const solicitante = c.data.solicitante
+      const [sug, con] = await Promise.all([
+        supabase.from('crm_suggestions').select('*')
+          .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
+          .order('fecha', { ascending: false }),
+        supabase.from('crm_consumption').select('*')
+          .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
+          .order('created_at', { ascending: false }),
+      ])
+      setSuggestions(sug.data ?? [])
+      setConsumption(con.data ?? [])
+    }
 
     if (f.data && f.data.length > 0) {
       const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)
@@ -67,45 +86,56 @@ export default function CrmClientPage() {
     await supabase.from('crm_clients').update({ telefonos: [...(client.telefonos ?? []), newPhone.trim()] }).eq('id', id)
     setNewPhone(''); load(); toast.success('Teléfono agregado')
   }
-
   const removePhone = async (phone: string) => {
     await supabase.from('crm_clients').update({ telefonos: client.telefonos.filter((t: string) => t !== phone) }).eq('id', id)
     load()
   }
-
   const addEmail = async () => {
     if (!newEmail.trim()) return
     await supabase.from('crm_clients').update({ correos: [...(client.correos ?? []), newEmail.trim()] }).eq('id', id)
     setNewEmail(''); load(); toast.success('Correo agregado')
   }
-
   const removeEmail = async (email: string) => {
     await supabase.from('crm_clients').update({ correos: client.correos.filter((e: string) => e !== email) }).eq('id', id)
     load()
   }
-
   const addContact = async () => {
     if (!contactForm.nombre.trim()) return toast.error('El nombre es obligatorio')
     await supabase.from('crm_contacts').insert({ ...contactForm, client_id: id })
     setContactForm({ nombre: '', puesto: '', telefono: '', correo: '', comentarios: '' })
-    setShowContactForm(false)
-    toast.success('Contacto agregado'); load()
+    setShowContactForm(false); toast.success('Contacto agregado'); load()
   }
-
   const deleteContact = async (contactId: string) => {
     if (!window.confirm('¿Eliminar este contacto?')) return
     await supabase.from('crm_contacts').delete().eq('id', contactId); load()
   }
 
+  const createOfferFromSuggestions = () => {
+    if (selectedSugg.length === 0) return toast.error('Selecciona al menos un material')
+    nav(`/crm/${id}/offer/new?source=sugerencia&ids=${selectedSugg.join(',')}`)
+  }
+
+  const createOfferFromConsumption = () => {
+    if (selectedCons.length === 0) return toast.error('Selecciona al menos un material')
+    nav(`/crm/${id}/offer/new?source=consumo&ids=${selectedCons.join(',')}`)
+  }
+
+  const toggleSugg = (sid: string) =>
+    setSelectedSugg(prev => prev.includes(sid) ? prev.filter(x => x !== sid) : [...prev, sid])
+  const toggleCons = (cid: string) =>
+    setSelectedCons(prev => prev.includes(cid) ? prev.filter(x => x !== cid) : [...prev, cid])
+
   if (!client) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'info', label: 'Info general' },
+    { key: 'info',          label: 'Info general' },
     { key: 'destinatarios', label: `Destinatarios (${recipients.length})` },
-    { key: 'contactos', label: `Contactos (${contacts.length})` },
-    { key: 'seguimientos', label: `Seguimientos (${followups.length})` },
-    { key: 'pedidos', label: `Pedidos (${orders.length})` },
-    { key: 'pendientes', label: `Pendientes (${tasks.length})` },
+    { key: 'contactos',     label: `Contactos (${contacts.length})` },
+    { key: 'seguimientos',  label: `Seguimientos (${followups.length})` },
+    { key: 'sugerencias',   label: `Sugerencias SAP (${suggestions.length})` },
+    { key: 'consumo',       label: `Consumo (${consumption.length})` },
+    { key: 'pedidos',       label: `Pedidos (${orders.length})` },
+    { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
   ]
 
   const TIPO_LABEL: Record<string, string> = {
@@ -113,26 +143,14 @@ export default function CrmClientPage() {
     cotizacion: '💰 Cotización', seguimiento_pedido: '📦 Pedido',
     seguimiento_traslado: '🚚 Traslado', otro: '📝 Otro',
   }
-
   const STATUS_COLOR: Record<string, string> = {
-    pendiente: 'bg-yellow-100 text-yellow-700',
-    en_proceso: 'bg-blue-100 text-blue-700',
+    pendiente: 'bg-yellow-100 text-yellow-700', en_proceso: 'bg-blue-100 text-blue-700',
     esperando_respuesta: 'bg-purple-100 text-purple-700',
-    completado: 'bg-green-100 text-green-700',
-    cancelado: 'bg-gray-100 text-gray-500',
-  }
-
-  const ORDER_COLOR: Record<string, string> = {
-    generado: 'bg-yellow-100 text-yellow-700',
-    confirmado: 'bg-blue-100 text-blue-700',
-    en_proceso: 'bg-purple-100 text-purple-700',
-    enviado: 'bg-orange-100 text-orange-700',
-    entregado: 'bg-green-100 text-green-700',
-    cancelado: 'bg-gray-100 text-gray-500',
+    completado: 'bg-green-100 text-green-700', cancelado: 'bg-gray-100 text-gray-500',
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <button onClick={() => nav('/crm')}
         className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
         ← Volver a clientes
@@ -150,13 +168,20 @@ export default function CrmClientPage() {
               {client.centro && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">Centro: {client.centro}</span>}
             </div>
           </div>
-          <Link to={`/crm/${id}/followup/new`}
-            className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 flex-shrink-0">
-            + Nuevo seguimiento
-          </Link>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={() => nav(`/crm/${id}/offer/new?source=manual`)}
+              className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
+              + Oferta manual
+            </button>
+            <Link to={`/crm/${id}/followup/new`}
+              className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+              + Seguimiento
+            </Link>
+          </div>
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-0 mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -211,7 +236,6 @@ export default function CrmClientPage() {
               ) : null)}
             </div>
           )}
-
           <div className="mt-6 pt-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Teléfonos</h3>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -229,7 +253,6 @@ export default function CrmClientPage() {
               <button onClick={addPhone} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200">Agregar</button>
             </div>
           </div>
-
           <div className="mt-4 pt-4 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Correos</h3>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -253,7 +276,6 @@ export default function CrmClientPage() {
       {/* TAB: Destinatarios */}
       {tab === 'destinatarios' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {recipients.length === 0 && <p className="text-sm text-gray-400 p-6">Sin destinatarios.</p>}
           {recipients.map(r => (
             <div key={r.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
               <p className="text-sm font-semibold text-gray-800">{r.destinatario}</p>
@@ -267,6 +289,7 @@ export default function CrmClientPage() {
               </div>
             </div>
           ))}
+          {recipients.length === 0 && <p className="text-sm text-gray-400 p-6">Sin destinatarios.</p>}
           <div className="px-5 py-3 border-t border-gray-100">
             <RecipientsTable clientId={id!} onRefresh={load} />
           </div>
@@ -282,7 +305,6 @@ export default function CrmClientPage() {
               className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
               + Agregar contacto
             </button>
-            <ContactsTable clientId={id!} onRefresh={load} />
           </div>
           {showContactForm && (
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3">
@@ -308,8 +330,8 @@ export default function CrmClientPage() {
               </div>
             </div>
           )}
-          {contacts.length === 0 && !showContactForm && <p className="text-sm text-gray-400">Sin contactos registrados.</p>}
-          <div className="space-y-3">
+          {contacts.length === 0 && !showContactForm && <p className="text-sm text-gray-400 mb-4">Sin contactos registrados.</p>}
+          <div className="space-y-3 mb-4">
             {contacts.map(c => (
               <div key={c.id} className="flex justify-between items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div>
@@ -325,6 +347,7 @@ export default function CrmClientPage() {
               </div>
             ))}
           </div>
+          <ContactsTable clientId={id!} onRefresh={load} />
         </div>
       )}
 
@@ -355,6 +378,166 @@ export default function CrmClientPage() {
               <span className="text-gray-300 text-lg ml-4">›</span>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* TAB: Sugerencias SAP */}
+      {tab === 'sugerencias' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Sugerencias SAP — pedidos abiertos</h2>
+            {selectedSugg.length > 0 && (
+              <button onClick={createOfferFromSuggestions}
+                className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
+                Crear oferta con {selectedSugg.length} material(es) seleccionado(s)
+              </button>
+            )}
+          </div>
+          {suggestions.length === 0 && (
+            <div className="p-8 text-center">
+              <p className="text-sm text-gray-400">No hay sugerencias para este cliente.</p>
+              <Link to="/crm/suggestions-import" className="text-xs text-teal-600 hover:underline mt-1 block">
+                Cargar archivo de sugerencias →
+              </Link>
+            </div>
+          )}
+          {suggestions.length > 0 && (
+            <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
+              <table className="text-xs border-collapse w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 border-b border-gray-200 w-8"></th>
+                    {['Pedido','Fecha','Destinatario','Mat. Solicitado','Descripción','Cant. Pendiente','Cant. Ofertar',
+                      'Mat. Sugerido','Desc. Sugerida','Centro Sug.','Alm. Sug.','Disponible','Lote','Caducidad','Fuente'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {suggestions.map(s => (
+                    <tr key={s.id} className={`border-b border-gray-100 hover:bg-teal-50 cursor-pointer ${selectedSugg.includes(s.id) ? 'bg-teal-50' : ''}`}
+                      onClick={() => toggleSugg(s.id)}>
+                      <td className="px-3 py-2 text-center">
+                        <input type="checkbox" checked={selectedSugg.includes(s.id)}
+                          onChange={() => toggleSugg(s.id)} onClick={e => e.stopPropagation()} />
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{s.pedido}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.fecha}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap max-w-32 truncate">{s.destinatario}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{s.material_solicitado}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_solicitada}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pendiente ?? '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_ofertar ?? '—'}</td>
+                      <td className="px-3 py-2 font-medium text-teal-700 whitespace-nowrap">{s.material_sugerido}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_sugerida}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.centro_sugerido}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.almacen_sugerido}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{s.disponible ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.lote ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.fecha_caducidad ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{s.fuente ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {selectedSugg.length > 0 && (
+            <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex justify-between items-center">
+              <p className="text-sm text-teal-700 font-medium">
+                {selectedSugg.length} material(es) seleccionado(s)
+              </p>
+              <button onClick={createOfferFromSuggestions}
+                className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+                Crear oferta →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: Consumo */}
+      {tab === 'consumo' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Reporte de consumo — oportunidades sin pedido abierto</h2>
+            {selectedCons.length > 0 && (
+              <button onClick={createOfferFromConsumption}
+                className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
+                Crear oferta con {selectedCons.length} material(es)
+              </button>
+            )}
+          </div>
+          {consumption.length === 0 && (
+            <div className="p-8 text-center">
+              <p className="text-sm text-gray-400">No hay datos de consumo para este cliente.</p>
+              <Link to="/crm/suggestions-import" className="text-xs text-teal-600 hover:underline mt-1 block">
+                Cargar archivo de consumo →
+              </Link>
+            </div>
+          )}
+          {consumption.length > 0 && (
+            <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
+              <table className="text-xs border-collapse w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 border-b border-gray-200 w-8"></th>
+                    {['Material','Descripción','Destinatario','Últ. Compra','Cons. Prom/Mes','Tendencia',
+                      'Precio Últ.','Precio Prom','Mat. Sugerido','Desc. Sugerida','Disponible','Lote','Caducidad','Fuente'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {consumption.map(c => (
+                    <tr key={c.id} className={`border-b border-gray-100 hover:bg-teal-50 cursor-pointer ${selectedCons.includes(c.id) ? 'bg-teal-50' : ''}`}
+                      onClick={() => toggleCons(c.id)}>
+                      <td className="px-3 py-2 text-center">
+                        <input type="checkbox" checked={selectedCons.includes(c.id)}
+                          onChange={() => toggleCons(c.id)} onClick={e => e.stopPropagation()} />
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{c.material}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{c.texto_material}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap max-w-32 truncate">{c.destinatario}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{c.ultima_compra_cliente ?? '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{c.consumo_promedio_mensual ?? '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {c.tendencia && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            c.tendencia === 'Alza' ? 'bg-green-100 text-green-700' :
+                            c.tendencia === 'Baja' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
+                          }`}>{c.tendencia}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        {c.precio_unitario_ultima ? `$${Number(c.precio_unitario_ultima).toLocaleString('es-MX')}` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        {c.precio_prom ? `$${Number(c.precio_prom).toLocaleString('es-MX')}` : '—'}
+                      </td>
+                      <td className="px-3 py-2 font-medium text-teal-700 whitespace-nowrap">{c.material_sugerido}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{c.descripcion_sugerida}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{c.disponible ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{c.lote ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{c.fecha_caducidad ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{c.fuente ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {selectedCons.length > 0 && (
+            <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex justify-between items-center">
+              <p className="text-sm text-teal-700 font-medium">
+                {selectedCons.length} material(es) seleccionado(s)
+              </p>
+              <button onClick={createOfferFromConsumption}
+                className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+                Crear oferta →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -398,8 +581,9 @@ export default function CrmClientPage() {
               </div>
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                 t.priority === 'alta' ? 'bg-red-100 text-red-700' :
-                t.priority === 'media' ? 'bg-yellow-100 text-yellow-700' :
-                'bg-green-100 text-green-700'}`}>{t.priority}</span>
+                t.priority === 'media' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                {t.priority}
+              </span>
             </Link>
           ))}
         </div>
