@@ -99,9 +99,7 @@ async function calendarRoutes(app) {
         const { data: calEvent } = await supabase_1.supabase
             .from('calendar_events')
             .select('*')
-            .eq('task_id', taskId)
-            .eq('is_active', true)
-            .single();
+            .eq('task_id', taskId).eq('is_active', true).eq('created_by', userId).single();
         if (!calEvent)
             return reply.code(404).send({ error: 'No hay evento activo para este pendiente' });
         const calendar = await getCalendarClient(userId);
@@ -144,7 +142,7 @@ async function calendarRoutes(app) {
         const { taskId } = req.params;
         const userId = req.user.id;
         const { data: calEvent } = await supabase_1.supabase.from('calendar_events')
-            .select('*').eq('task_id', taskId).eq('is_active', true).single();
+            .select('*').eq('task_id', taskId).eq('is_active', true).eq('created_by', userId).single();
         if (!calEvent)
             return reply.code(404).send({ error: 'No hay evento activo' });
         const calendar = await getCalendarClient(userId);
@@ -165,3 +163,5 @@ async function calendarRoutes(app) {
         return reply.send({ success: true });
     });
 }
+// Ya está correcto — el DELETE filtra por task_id y is_active:true
+// Solo asegúrate que también filtre por created_by en el backend

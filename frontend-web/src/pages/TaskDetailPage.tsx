@@ -36,7 +36,12 @@ export default function TaskDetailPage() {
     const [t, h, c] = await Promise.all([
       supabase.from('tasks').select('*').eq('id', id).single(),
       supabase.from('task_history').select('*, users:created_by(full_name, email)').eq('task_id', id).order('created_at'),
-      supabase.from('calendar_events').select('*').eq('task_id', id).eq('is_active', true),
+      supabase.auth.getUser().then(({ data: { user } }) =>
+      supabase.from('calendar_events').select('*')
+        .eq('task_id', id)
+        .eq('is_active', true)
+        .eq('created_by', user?.id)
+    ),
     ])
     setTask(t.data)
     setHistory(h.data ?? [])
