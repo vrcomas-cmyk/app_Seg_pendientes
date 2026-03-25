@@ -1,20 +1,40 @@
-// Parser CSV ligero para archivos grandes
-// Soporta comas y tabuladores como delimitadores
 export function parseCSVText(text: string): Record<string, string>[] {
   const lines = text.split('\n')
   if (lines.length < 2) return []
 
-  // Detectar delimitador (tab o coma)
   const firstLine = lines[0]
-  const delimiter = firstLine.includes('\t') ? '\t' : ','
 
-  const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''))
+  // Detectar delimitador: tab > punto y coma > coma
+  let delimiter = ','
+  if (firstLine.includes('\t')) delimiter = '\t'
+  else if (firstLine.split(';').length > firstLine.split(',').length) delimiter = ';'
+
+  const parseRow = (line: string): string[] => {
+    const cells: string[] = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') {
+        inQuotes = !inQuotes
+      } else if (ch === delimiter[0] && !inQuotes) {
+        cells.push(current.trim())
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    cells.push(current.trim())
+    return cells
+  }
+
+  const headers = parseRow(firstLine).map(h => h.replace(/^\uFEFF/, '').trim()) // quitar BOM
 
   const rows: Record<string, string>[] = []
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim()
     if (!line) continue
-    const cells = line.split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''))
+    const cells = parseRow(line)
     const row: Record<string, string> = {}
     headers.forEach((h, j) => { row[h] = cells[j] ?? '' })
     rows.push(row)

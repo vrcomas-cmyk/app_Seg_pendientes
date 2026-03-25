@@ -63,6 +63,11 @@ export default function CrmSuggestionsImportPage() {
     try {
       const rows = await readRows(file)
       if (!rows.length) { toast.error('El archivo está vacío'); setLoading(null); return }
+      // Debug: mostrar primeras columnas detectadas
+      const sampleKeys = Object.keys(rows[0] ?? {}).slice(0, 5)
+      console.log('Columnas detectadas:', sampleKeys)
+      setProgress(p => ({ ...p, [type]: `Columnas: ${sampleKeys.join(' | ')}` }))
+      await new Promise(r => setTimeout(r, 2000)) // pausa para ver el mensaje
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
