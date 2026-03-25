@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import CrmOrderStatusBar from './CrmOrderStatusBar'
+import RecipientsTable from '../../components/RecipientsTable'
+import ContactsTable from '../../components/ContactsTable'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -265,6 +267,9 @@ export default function CrmClientPage() {
               </div>
             </div>
           ))}
+          <div className="px-5 py-3 border-t border-gray-100">
+            <RecipientsTable clientId={id!} onRefresh={load} />
+          </div>
         </div>
       )}
 
@@ -277,6 +282,7 @@ export default function CrmClientPage() {
               className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
               + Agregar contacto
             </button>
+            <ContactsTable clientId={id!} onRefresh={load} />
           </div>
           {showContactForm && (
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3">

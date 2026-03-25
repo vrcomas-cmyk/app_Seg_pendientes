@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import CedisTable from '../../components/CedisTable'
 
 export default function CrmCedisPage() {
   const { clientId, orderId } = useParams()
@@ -163,6 +164,12 @@ export default function CrmCedisPage() {
           className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
           + Nuevo requerimiento
         </button>
+        {order && (
+          <CedisTable
+            orderId={orderId!}
+            numeroPedido={order.numero_pedido}
+            onRefresh={load} />
+        )}
       </div>
 
       {/* Pre-llenar desde materiales del pedido */}

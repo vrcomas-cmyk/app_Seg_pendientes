@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import MaterialsTable from '../../components/MaterialsTable'
 
 export default function CrmFollowupPage() {
   const { clientId, followupId } = useParams()
@@ -371,6 +372,10 @@ export default function CrmFollowupPage() {
             <button onClick={() => setShowMatForm(!showMatForm)}
               className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
               + Agregar material
+              <MaterialsTable followupId={fid!} onRefresh={() => {
+                supabase.from('crm_materials').select('*').eq('followup_id', fid)
+                  .then(({ data }) => setMaterials(data ?? []))
+              }} />
             </button>
           </div>
 
