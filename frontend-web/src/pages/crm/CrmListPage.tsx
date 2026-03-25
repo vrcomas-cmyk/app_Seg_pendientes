@@ -14,16 +14,9 @@ export default function CrmListPage() {
     setLoading(true)
     let q = supabase
       .from('crm_followups')
-      .select(`
-        *,
-        crm_clients(id, solicitante, ramo, centro),
-        crm_recipients(destinatario),
-        crm_contacts(nombre, puesto)
-      `)
+      .select('*, crm_clients(id, solicitante, ramo, centro), crm_recipients(destinatario), crm_contacts(nombre, puesto)')
       .order('fecha_seguimiento', { ascending: true, nullsFirst: false })
-
     if (filterEstatus) q = q.eq('estatus', filterEstatus)
-
     const { data } = await q
     setFollowups(data ?? [])
     setLoading(false)
@@ -31,13 +24,8 @@ export default function CrmListPage() {
 
   const loadClients = async () => {
     setLoading(true)
-    let q = supabase
-      .from('crm_clients')
-      .select('*, crm_recipients(count), crm_followups(count)')
-      .order('solicitante')
-    if (search) {
-      q = q.or(`solicitante.ilike.%${search}%,razon_social.ilike.%${search}%,rfc.ilike.%${search}%`)
-    }
+    let q = supabase.from('crm_clients').select('*, crm_recipients(count), crm_followups(count)').order('solicitante')
+    if (search) q = q.or(`solicitante.ilike.%${search}%,razon_social.ilike.%${search}%,rfc.ilike.%${search}%`)
     const { data } = await q
     setClients(data ?? [])
     setLoading(false)
@@ -55,14 +43,13 @@ export default function CrmListPage() {
   }
 
   const STATUS_COLOR: Record<string, string> = {
-    pendiente:            'bg-yellow-100 text-yellow-700',
-    en_proceso:           'bg-blue-100 text-blue-700',
-    esperando_respuesta:  'bg-purple-100 text-purple-700',
-    completado:           'bg-green-100 text-green-700',
-    cancelado:            'bg-gray-100 text-gray-500',
+    pendiente:           'bg-yellow-100 text-yellow-700',
+    en_proceso:          'bg-blue-100 text-blue-700',
+    esperando_respuesta: 'bg-purple-100 text-purple-700',
+    completado:          'bg-green-100 text-green-700',
+    cancelado:           'bg-gray-100 text-gray-500',
   }
 
-  // Agrupar seguimientos por fecha de próximo seguimiento
   const today = new Date().toISOString().split('T')[0]
   const overdue   = followups.filter(f => f.fecha_seguimiento && f.fecha_seguimiento < today)
   const todayList = followups.filter(f => f.fecha_seguimiento === today)
@@ -74,9 +61,7 @@ export default function CrmListPage() {
       className="flex items-start justify-between px-5 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="text-sm font-semibold text-gray-800">
-            {f.crm_clients?.solicitante}
-          </span>
+          <span className="text-sm font-semibold text-gray-800">{f.crm_clients?.solicitante}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[f.estatus]}`}>
             {f.estatus.replace('_', ' ')}
           </span>
@@ -84,12 +69,8 @@ export default function CrmListPage() {
         </div>
         <p className="text-sm text-gray-600 line-clamp-1 mb-1">{f.descripcion}</p>
         <div className="flex flex-wrap gap-3 text-xs text-gray-400">
-          {f.crm_recipients?.destinatario && (
-            <span>Destinatario: {f.crm_recipients.destinatario}</span>
-          )}
-          {f.crm_contacts?.nombre && (
-            <span>Contacto: {f.crm_contacts.nombre}{f.crm_contacts.puesto ? ` — ${f.crm_contacts.puesto}` : ''}</span>
-          )}
+          {f.crm_recipients?.destinatario && <span>Destinatario: {f.crm_recipients.destinatario}</span>}
+          {f.crm_contacts?.nombre && <span>Contacto: {f.crm_contacts.nombre}{f.crm_contacts.puesto ? ` — ${f.crm_contacts.puesto}` : ''}</span>}
           {f.crm_clients?.centro && <span>Centro: {f.crm_clients.centro}</span>}
         </div>
       </div>
@@ -123,8 +104,7 @@ export default function CrmListPage() {
           <h1 className="text-2xl font-bold text-gray-800">CRM</h1>
           <p className="text-sm text-gray-400 mt-0.5">Seguimiento comercial</p>
         </div>
-        <div className="flex gap-2">
-          {/* AGREGA ESTA LÍNEA AQUÍ ↓ */}
+        <div className="flex gap-2 flex-wrap justify-end">
           <Link to="/crm/special-orders"
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Pedidos especiales
@@ -138,19 +118,16 @@ export default function CrmListPage() {
             + Cliente
           </Link>
         </div>
+      </div>
 
       {/* Toggle vista */}
       <div className="flex gap-0 mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden w-fit">
         <button onClick={() => setView('seguimientos')}
-          className={`px-5 py-2.5 text-sm font-medium transition ${
-            view === 'seguimientos' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'
-          }`}>
+          className={`px-5 py-2.5 text-sm font-medium transition ${view === 'seguimientos' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
           Seguimientos pendientes
         </button>
         <button onClick={() => setView('clientes')}
-          className={`px-5 py-2.5 text-sm font-medium transition ${
-            view === 'clientes' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'
-          }`}>
+          className={`px-5 py-2.5 text-sm font-medium transition ${view === 'clientes' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
           Todos los clientes
         </button>
       </div>
@@ -158,13 +135,12 @@ export default function CrmListPage() {
       {/* Vista: Seguimientos */}
       {view === 'seguimientos' && (
         <>
-          {/* Filtros */}
           <div className="flex gap-2 mb-4 flex-wrap">
             {[
-              { value: 'pendiente', label: 'Pendientes' },
-              { value: 'en_proceso', label: 'En proceso' },
+              { value: 'pendiente',           label: 'Pendientes' },
+              { value: 'en_proceso',          label: 'En proceso' },
               { value: 'esperando_respuesta', label: 'Esperando respuesta' },
-              { value: '', label: 'Todos' },
+              { value: '',                    label: 'Todos' },
             ].map(f => (
               <button key={f.value} onClick={() => setFilterEstatus(f.value)}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
@@ -182,36 +158,30 @@ export default function CrmListPage() {
           {!loading && followups.length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <p className="text-gray-400 text-sm mb-4">No hay seguimientos con este estatus.</p>
-              <p className="text-xs text-gray-300">
-                Crea un cliente y agrega un seguimiento para verlo aquí.
-              </p>
+              <p className="text-xs text-gray-300">Crea un cliente y agrega un seguimiento para verlo aquí.</p>
             </div>
           )}
 
           {!loading && followups.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* Vencidos */}
               {overdue.length > 0 && (
                 <>
                   <SectionHeader title="Vencidos" count={overdue.length} color="bg-red-50 text-red-600" />
                   {overdue.map(f => <FollowupCard key={f.id} f={f} />)}
                 </>
               )}
-              {/* Hoy */}
               {todayList.length > 0 && (
                 <>
                   <SectionHeader title="Hoy" count={todayList.length} color="bg-teal-50 text-teal-700" />
                   {todayList.map(f => <FollowupCard key={f.id} f={f} />)}
                 </>
               )}
-              {/* Próximos */}
               {upcoming.length > 0 && (
                 <>
                   <SectionHeader title="Próximos" count={upcoming.length} color="bg-blue-50 text-blue-600" />
                   {upcoming.map(f => <FollowupCard key={f.id} f={f} />)}
                 </>
               )}
-              {/* Sin fecha */}
               {noDate.length > 0 && (
                 <>
                   <SectionHeader title="Sin fecha asignada" count={noDate.length} color="bg-gray-50 text-gray-500" />
@@ -226,10 +196,10 @@ export default function CrmListPage() {
       {/* Vista: Clientes */}
       {view === 'clientes' && (
         <>
-          <input className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm mb-4 outline-none focus:border-teal-400"
+          <input
+            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm mb-4 outline-none focus:border-teal-400"
             placeholder="Buscar por nombre, razón social o RFC..."
             value={search} onChange={e => setSearch(e.target.value)} />
-
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {loading && <p className="text-sm text-gray-400 p-6">Cargando...</p>}
             {!loading && clients.length === 0 && (
