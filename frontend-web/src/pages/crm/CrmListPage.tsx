@@ -121,6 +121,10 @@ export default function CrmListPage() {
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Cargar Excel
           </Link>
+          <Link to="/crm/reports"
+            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Reportes globales
+          </Link>
           <Link to="/crm/new"
             className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
             + Cliente

@@ -17,6 +17,7 @@ import CrmNewClientPage from './pages/crm/CrmNewClientPage'
 import CrmSpecialOrdersPage from './pages/crm/CrmSpecialOrdersPage'
 import CrmSuggestionsImportPage from './pages/crm/CrmSuggestionsImportPage'
 import CrmOffersListPage from './pages/crm/CrmOffersListPage'
+import CrmReportsPage from './pages/crm/CrmReportsPage'
 import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CatalogPage from './pages/CatalogPage'
 import Layout from './components/Layout'
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/crm/special-orders" element={<CrmSpecialOrdersPage />} />
         <Route path="/crm/suggestions-import" element={<CrmSuggestionsImportPage />} />
         <Route path="/crm/offers" element={<CrmOffersListPage />} />
+        <Route path="/crm/reports" element={<CrmReportsPage />} />
         <Route path="/crm/:clientId/offer/:offerId" element={<CrmOfferPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
       </Route>

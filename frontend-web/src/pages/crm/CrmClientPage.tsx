@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import CrmOrderStatusBar from './CrmOrderStatusBar'
 import RecipientsTable from '../../components/RecipientsTable'
 import ContactsTable from '../../components/ContactsTable'
+import SugFilters from '../../components/SugFilters'
 import toast from 'react-hot-toast'
 
 type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'pedidos' | 'pendientes'
@@ -30,6 +31,8 @@ export default function CrmClientPage() {
   // Selección para crear oferta
   const [selectedSugg, setSelectedSugg] = useState<string[]>([])
   const [selectedCons, setSelectedCons] = useState<string[]>([])
+  const [filteredSugg, setFilteredSugg] = useState<any[]>([])
+  const [filteredCons, setFilteredCons] = useState<any[]>([])
 
   const load = async () => {
     const [c, r, co, f, o] = await Promise.all([
@@ -83,7 +86,9 @@ export default function CrmClientPage() {
         !rejectedSet.has(`${s.pedido}__${s.material_solicitado}`)
       )
       setSuggestions(filteredSug)
+      setFilteredSugg(filteredSug)
       setConsumption(con.data ?? [])
+      setFilteredCons(con.data ?? [])
     }
 
     if (f.data && f.data.length > 0) {
@@ -412,16 +417,18 @@ export default function CrmClientPage() {
       {/* TAB: Sugerencias SAP */}
       {tab === 'sugerencias' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center flex-wrap gap-2">
             <h2 className="font-semibold text-gray-700">Sugerencias SAP — pedidos abiertos</h2>
             {selectedSugg.length > 0 && (
               <button onClick={createOfferFromSuggestions}
                 className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
-                Crear oferta con {selectedSugg.length} material(es) seleccionado(s)
+                Crear oferta con {selectedSugg.length} material(es)
               </button>
             )}
           </div>
-          {suggestions.length === 0 && (
+          {/* Filtros */}
+          <SugFilters data={suggestions} onFilter={setFilteredSugg} />
+          {filteredSugg.length === 0 && (
             <div className="p-8 text-center">
               <p className="text-sm text-gray-400">No hay sugerencias para este cliente.</p>
               <Link to="/crm/suggestions-import" className="text-xs text-teal-600 hover:underline mt-1 block">
@@ -429,7 +436,7 @@ export default function CrmClientPage() {
               </Link>
             </div>
           )}
-          {suggestions.length > 0 && (
+          {filteredSugg.length > 0 && (
             <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
               <table className="text-xs border-collapse w-full">
                 <thead className="bg-gray-50 sticky top-0">
@@ -442,7 +449,7 @@ export default function CrmClientPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {suggestions.map(s => (
+                  {filteredSugg.map(s => (
                     <tr key={s.id} className={`border-b border-gray-100 hover:bg-teal-50 cursor-pointer ${selectedSugg.includes(s.id) ? 'bg-teal-50' : ''}`}
                       onClick={() => toggleSugg(s.id)}>
                       <td className="px-3 py-2 text-center">
@@ -454,8 +461,8 @@ export default function CrmClientPage() {
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap max-w-32 truncate">{s.destinatario}</td>
                       <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{s.material_solicitado}</td>
                       <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_solicitada}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pendiente ?? '—'}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pedido ?? '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pendiente ?? '—'}</td>
                       <td className="px-3 py-2 font-medium text-teal-700 whitespace-nowrap">{s.material_sugerido}</td>
                       <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_sugerida}</td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.centro_sugerido}</td>
@@ -472,9 +479,7 @@ export default function CrmClientPage() {
           )}
           {selectedSugg.length > 0 && (
             <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex justify-between items-center">
-              <p className="text-sm text-teal-700 font-medium">
-                {selectedSugg.length} material(es) seleccionado(s)
-              </p>
+              <p className="text-sm text-teal-700 font-medium">{selectedSugg.length} material(es) seleccionado(s)</p>
               <button onClick={createOfferFromSuggestions}
                 className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
                 Crear oferta →
@@ -487,8 +492,8 @@ export default function CrmClientPage() {
       {/* TAB: Consumo */}
       {tab === 'consumo' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-            <h2 className="font-semibold text-gray-700">Reporte de consumo — oportunidades sin pedido abierto</h2>
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center flex-wrap gap-2">
+            <h2 className="font-semibold text-gray-700">Reporte de consumo</h2>
             {selectedCons.length > 0 && (
               <button onClick={createOfferFromConsumption}
                 className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
@@ -496,7 +501,8 @@ export default function CrmClientPage() {
               </button>
             )}
           </div>
-          {consumption.length === 0 && (
+          <SugFilters data={consumption} onFilter={setFilteredCons} isConsumption />
+          {filteredCons.length === 0 && (
             <div className="p-8 text-center">
               <p className="text-sm text-gray-400">No hay datos de consumo para este cliente.</p>
               <Link to="/crm/suggestions-import" className="text-xs text-teal-600 hover:underline mt-1 block">
@@ -504,7 +510,7 @@ export default function CrmClientPage() {
               </Link>
             </div>
           )}
-          {consumption.length > 0 && (
+          {filteredCons.length > 0 && (
             <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
               <table className="text-xs border-collapse w-full">
                 <thead className="bg-gray-50 sticky top-0">
@@ -517,7 +523,7 @@ export default function CrmClientPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {consumption.map(c => (
+                  {filteredCons.map(c => (
                     <tr key={c.id} className={`border-b border-gray-100 hover:bg-teal-50 cursor-pointer ${selectedCons.includes(c.id) ? 'bg-teal-50' : ''}`}
                       onClick={() => toggleCons(c.id)}>
                       <td className="px-3 py-2 text-center">
@@ -557,9 +563,7 @@ export default function CrmClientPage() {
           )}
           {selectedCons.length > 0 && (
             <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex justify-between items-center">
-              <p className="text-sm text-teal-700 font-medium">
-                {selectedCons.length} material(es) seleccionado(s)
-              </p>
+              <p className="text-sm text-teal-700 font-medium">{selectedCons.length} material(es) seleccionado(s)</p>
               <button onClick={createOfferFromConsumption}
                 className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
                 Crear oferta →
