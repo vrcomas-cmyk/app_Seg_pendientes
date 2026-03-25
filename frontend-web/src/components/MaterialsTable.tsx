@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import EditableTable from './EditableTable'
+import MaterialSearchInput from './MaterialSearchInput'
 import toast from 'react-hot-toast'
 
 const COLUMNS = [
@@ -26,9 +27,22 @@ interface Props {
 }
 
 export default function MaterialsTable({ followupId, onRefresh }: Props) {
-  const [mode, setMode] = useState<'table' | 'list'>('list')
-  const [materials, setMaterials] = useState<any[]>([])
   const [showTable, setShowTable] = useState(false)
+  const [initialRows, setInitialRows] = useState<Record<string, string>[]>([])
+
+  const handleCatalogSelect = (m: any) => {
+    setInitialRows(prev => [...prev, {
+      material:        m.material,
+      descripcion:     m.descripcion ?? '',
+      precio_ofertado: m.lista_02 ? String(m.lista_02) : '',
+      condicion:       m.condicion ?? '',
+      lote:            '',
+      caducidad:       '',
+      requisitos:      '',
+    }])
+    if (!showTable) setShowTable(true)
+    toast.success(`${m.material} agregado a la tabla`)
+  }
 
   const handleSave = async (rows: Record<string, string>[]) => {
     const inserts = rows
@@ -49,33 +63,42 @@ export default function MaterialsTable({ followupId, onRefresh }: Props) {
     if (error) { toast.error(error.message); return }
     toast.success(`${inserts.length} material(es) guardados`)
     setShowTable(false)
+    setInitialRows([])
     onRefresh()
   }
 
   if (!showTable) {
     return (
-      <button onClick={() => setShowTable(true)}
-        className="text-sm text-teal-600 hover:text-teal-700 font-medium border border-teal-200 px-4 py-2 rounded-lg hover:bg-teal-50">
-        + Agregar materiales en tabla
-      </button>
+      <div className="space-y-2">
+        <MaterialSearchInput
+          onSelect={handleCatalogSelect}
+          placeholder="Buscar en catálogo y agregar material..." />
+        <button onClick={() => setShowTable(true)}
+          className="text-sm text-teal-600 hover:text-teal-700 font-medium border border-teal-200 px-4 py-2 rounded-lg hover:bg-teal-50">
+          + Agregar materiales en tabla manual
+        </button>
+      </div>
     )
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex justify-between items-center mb-3">
+    <div className="mt-2 space-y-3">
+      <div className="flex justify-between items-center">
         <p className="text-sm font-semibold text-gray-700">
-          Captura en tabla — Tab para pasar al siguiente campo
+          Tabla de materiales — Tab para navegar
         </p>
-        <button onClick={() => setShowTable(false)}
+        <button onClick={() => { setShowTable(false); setInitialRows([]) }}
           className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
       </div>
+      <MaterialSearchInput
+        onSelect={handleCatalogSelect}
+        placeholder="Buscar en catálogo para agregar más..." />
       <EditableTable
         columns={COLUMNS}
+        initialRows={initialRows.length > 0 ? initialRows : undefined}
         onSave={handleSave}
         saveLabel="Guardar materiales"
-        addLabel="+ Agregar fila"
-        emptyLabel="Agrega al menos un material con código o nombre" />
+        addLabel="+ Agregar fila manual" />
     </div>
   )
 }

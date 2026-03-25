@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import { useNavigate, Link } from 'react-router-dom'
 
 const COLUMNS = [
   { key: 'gpo_cliente',            label: 'Gpo. Cte.' },
@@ -202,7 +202,29 @@ export default function CrmSpecialOrdersPage() {
       fecha_caducidad:        parseExcelDate(r.fecha_caducidad) || null,
       estatus:                'pendiente',
       created_by:             user?.id,
+      client_id:              null as string | null,
     }))
+
+    // Buscar y vincular cliente por Solicitante automáticamente
+    const solicitantes = [...new Set(inserts.map(r => r.solicitante).filter(Boolean))]
+    if (solicitantes.length > 0) {
+      const { data: clientsFound } = await supabase
+        .from('crm_clients')
+        .select('id, solicitante')
+        .in('solicitante', solicitantes as string[])
+
+      if (clientsFound && clientsFound.length > 0) {
+        const clientMap: Record<string, string> = {}
+        clientsFound.forEach(c => { clientMap[c.solicitante] = c.id })
+        inserts.forEach(r => {
+          if (r.solicitante && clientMap[r.solicitante]) {
+            r.client_id = clientMap[r.solicitante]
+          }
+        })
+        const linked = inserts.filter(r => r.client_id).length
+        if (linked > 0) toast.success(`${linked} línea(s) vinculadas a cliente CRM`)
+      }
+    }
 
     const { error } = await supabase.from('crm_special_orders').insert(inserts)
     if (error) { toast.error(error.message); setSaving(false); return }
@@ -405,7 +427,16 @@ export default function CrmSpecialOrdersPage() {
                         </td>
                         <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{o.pedido}</td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{o.fecha}</td>
-                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-32 truncate">{o.solicitante}</td>
+                        <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">
+                          {o.client_id ? (
+                            <Link to={`/crm/${o.client_id}`} onClick={e => e.stopPropagation()}
+                              className="text-teal-600 hover:text-teal-700 font-medium text-xs">
+                              {o.solicitante}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-700">{o.solicitante}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap max-w-32 truncate">{o.destinatario}</td>
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap font-medium">{o.material_solicitado}</td>
                         <td className="px-3 py-2 text-gray-500 max-w-48 truncate">{o.descripcion_solicitada}</td>
