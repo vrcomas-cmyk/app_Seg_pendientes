@@ -57,25 +57,44 @@ export default function CatalogPage() {
 
       const { data: { user } } = await supabase.auth.getUser()
 
+      // Helper para limpiar valor monetario: " $1.14 " → 1.14
+      const parseMoney = (v: any) => {
+        if (v === undefined || v === null || v === '') return null
+        const n = parseFloat(String(v).replace(/[$,\s]/g, ''))
+        return isNaN(n) ? null : n
+      }
+
+      // Helper para obtener valor de columna ignorando espacios en el encabezado
+      const col = (r: any, ...keys: string[]) => {
+        for (const key of keys) {
+          // Busca exacto primero
+          if (r[key] !== undefined && r[key] !== '') return String(r[key]).trim()
+          // Busca ignorando espacios al inicio/fin
+          const found = Object.keys(r).find(k => k.trim() === key.trim())
+          if (found && r[found] !== undefined && r[found] !== '') return String(r[found]).trim()
+        }
+        return ''
+      }
+
       const inserts = rows.map(r => ({
-        material:        String(r['Material'] || r['material'] || '').trim(),
-        descripcion:     String(r['Texto breve de material'] || r['Descripcion'] || r['descripcion'] || '').trim() || null,
-        sector:          String(r['Sector'] || '').trim() || null,
-        descr_sector:    String(r['Descr. Sector'] || '').trim() || null,
-        descr_grupo_art: String(r['Descr. Grupo de Art.'] || '').trim() || null,
-        grupo_articulos: String(r['Grupo de artículos'] || r['Grupo de articulos'] || '').trim() || null,
-        um:              String(r['UM'] || '').trim() || null,
-        tipo_material:   String(r['Tipo de material'] || '').trim() || null,
-        costo:           parseNum(r['Costo']),
-        cajas_pallet:    parseNum(r['Cajas por Pallet']),
-        piezas_umv_caja: parseNum(r['Piezas UMV por caja']),
-        piezas_pallet:   parseNum(r['Piezas (UM) Por pallet']),
-        cajas_cama:      parseNum(r['Cajas x cama']),
-        camas_tarima:    parseNum(r['Camas por tarima']),
-        altura_m:        parseNum(r['Altura (M)']),
-        lista_02:        parseNum(r['LISTA 02']),
-        lista_06:        parseNum(r['LISTA 06']),
-        condicion:       String(r['Condicion'] || r['Condición'] || '').trim() || null,
+        material:        col(r, 'Material', 'material'),
+        descripcion:     col(r, 'Texto breve de material', 'Descripcion', 'descripcion', 'Material y Descripcion') || null,
+        sector:          col(r, 'Sector') || null,
+        descr_sector:    col(r, 'Descr. Sector') || null,
+        descr_grupo_art: col(r, 'Descr. Grupo de Art.') || null,
+        grupo_articulos: col(r, 'Grupo de artículos', 'Grupo de articulos') || null,
+        um:              col(r, 'UM', ' UM') || null,
+        tipo_material:   col(r, 'Tipo de material') || null,
+        costo:           parseMoney(col(r, 'Costo', ' Costo')),
+        cajas_pallet:    parseNum(col(r, 'Cajas por Pallet')),
+        piezas_umv_caja: parseNum(col(r, 'Piezas UMV por caja')),
+        piezas_pallet:   parseNum(col(r, 'Piezas (UM) Por pallet')),
+        cajas_cama:      parseNum(col(r, 'Cajas x cama')),
+        camas_tarima:    parseNum(col(r, 'Camas por tarima')),
+        altura_m:        parseNum(col(r, 'Altura (M)')),
+        lista_02:        parseMoney(col(r, 'LISTA 02', ' LISTA 02')),
+        lista_06:        parseMoney(col(r, 'LISTA 06', ' LISTA 06')),
+        condicion:       col(r, 'Condicion', 'Condición', ' Condicion') || null,
         created_by:      user?.id,
       })).filter(r => r.material)
 
