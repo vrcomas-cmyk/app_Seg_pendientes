@@ -69,7 +69,8 @@ export default function CrmClientPage() {
       )
       setSuggestions(filteredSug)
       setConsumption(con.data ?? [])
-
+    }
+    
     if (f.data && f.data.length > 0) {
       const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)
       if (taskIds.length > 0) {
