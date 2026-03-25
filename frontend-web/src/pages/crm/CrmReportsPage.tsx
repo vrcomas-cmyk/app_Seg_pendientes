@@ -240,7 +240,7 @@ export default function CrmReportsPage() {
         um:                r.um ?? null,
         numero_pedido:     tab === 'suggestions' ? (r.pedido ?? null) : null,
         pedido_existente:  tab === 'suggestions',
-        pedido_pendiente:  tab === 'consumo',
+        pedido_pendiente:  tab === 'consumption',
         centro_origen:     r.centro_sugerido ?? null,
         almacen_origen:    r.almacen_sugerido ?? null,
         centro_destino:    tab === 'suggestions' ? (r.centro_pedido ?? null) : (r.centro ?? null),
