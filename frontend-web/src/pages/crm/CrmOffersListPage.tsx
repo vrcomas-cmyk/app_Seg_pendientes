@@ -44,6 +44,7 @@ export default function CrmOffersListPage() {
         crm_offer_items(id, material, descripcion, estatus, aceptado,
           precio_oferta, numero_pedido, um, lotes, cedis_request_id, numero_factura)
       `)
+      .not('estatus','in','("cerrada","cancelado")')
       .order('created_at', { ascending: false })
 
     if (filterEstatus) q = q.eq('estatus', filterEstatus)

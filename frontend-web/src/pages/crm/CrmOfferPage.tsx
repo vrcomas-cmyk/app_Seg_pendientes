@@ -455,7 +455,7 @@ export default function CrmOfferPage() {
             </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setShowManualForm(true)}
             className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
             + Material manual
@@ -463,8 +463,28 @@ export default function CrmOfferPage() {
           {items.length > 0 && (
             <button onClick={saveOffer} disabled={saving}
               className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-              {saving ? 'Guardando...' : savedOfferId ? 'Actualizar oferta' : 'Guardar oferta'}
+              {saving ? 'Guardando...' : savedOfferId ? 'Actualizar' : 'Guardar oferta'}
             </button>
+          )}
+          {savedOfferId && (
+            <>
+              <button onClick={async () => {
+                if (!window.confirm('¿Cerrar esta oferta? Quedará archivada.')) return
+                await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
+                toast.success('Oferta cerrada')
+                nav(`/crm/${clientId}`)
+              }} className="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50">
+                ✅ Cerrar oferta
+              </button>
+              <button onClick={async () => {
+                if (!window.confirm('¿Cancelar esta oferta? Las sugerencias volverán a aparecer.')) return
+                await supabase.from('crm_offers').update({ estatus: 'cancelado' }).eq('id', savedOfferId)
+                toast.success('Oferta cancelada — sugerencias restauradas')
+                nav(`/crm/${clientId}`)
+              }} className="border border-red-300 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">
+                Cancelar oferta
+              </button>
+            </>
           )}
         </div>
       </div>

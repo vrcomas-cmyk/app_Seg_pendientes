@@ -70,9 +70,17 @@ export default function CrmClientPage() {
       const acceptedSet = new Set(
         (accepted ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
       )
+      // También filtrar rechazadas
+      const { data: rejected } = await supabase
+        .from('crm_rejected_suggestions').select('numero_pedido, material')
+      const rejectedSet = new Set(
+        (rejected ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+      )
       const filteredSug = (sugRaw.data ?? []).filter(s =>
         !acceptedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
-        !acceptedSet.has(`${s.pedido}__${s.material_solicitado}`)
+        !acceptedSet.has(`${s.pedido}__${s.material_solicitado}`) &&
+        !rejectedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
+        !rejectedSet.has(`${s.pedido}__${s.material_solicitado}`)
       )
       setSuggestions(filteredSug)
       setConsumption(con.data ?? [])
@@ -427,7 +435,7 @@ export default function CrmClientPage() {
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
                     <th className="px-3 py-2 border-b border-gray-200 w-8"></th>
-                    {['Pedido','Fecha','Destinatario','Mat. Solicitado','Descripción','Cant. Pendiente','Cant. Ofertar',
+                    {['Pedido','Fecha','Destinatario','Mat. Solicitado','Descripción','Cant. Pedido','Cant. Pendiente',
                       'Mat. Sugerido','Desc. Sugerida','Centro Sug.','Alm. Sug.','Disponible','Lote','Caducidad','Fuente'].map(h => (
                       <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
                     ))}
@@ -447,7 +455,7 @@ export default function CrmClientPage() {
                       <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{s.material_solicitado}</td>
                       <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_solicitada}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pendiente ?? '—'}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_ofertar ?? '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{s.cantidad_pedido ?? '—'}</td>
                       <td className="px-3 py-2 font-medium text-teal-700 whitespace-nowrap">{s.material_sugerido}</td>
                       <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{s.descripcion_sugerida}</td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{s.centro_sugerido}</td>
