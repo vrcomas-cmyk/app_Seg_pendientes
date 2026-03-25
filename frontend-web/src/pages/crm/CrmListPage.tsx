@@ -124,6 +124,11 @@ export default function CrmListPage() {
           <p className="text-sm text-gray-400 mt-0.5">Seguimiento comercial</p>
         </div>
         <div className="flex gap-2">
+          {/* AGREGA ESTA LÍNEA AQUÍ ↓ */}
+          <Link to="/crm/special-orders"
+            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Pedidos especiales
+          </Link>
           <Link to="/crm/import"
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Cargar Excel
@@ -133,7 +138,6 @@ export default function CrmListPage() {
             + Cliente
           </Link>
         </div>
-      </div>
 
       {/* Toggle vista */}
       <div className="flex gap-0 mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden w-fit">
