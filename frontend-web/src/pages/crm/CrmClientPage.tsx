@@ -6,7 +6,7 @@ import RecipientsTable from '../../components/RecipientsTable'
 import ContactsTable from '../../components/ContactsTable'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'pedidos' | 'pendientes'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'pedidos' | 'pendientes'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -19,6 +19,7 @@ export default function CrmClientPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [consumption, setConsumption] = useState<any[]>([])
+  const [offers, setOffers] = useState<any[]>([])
   const [tab, setTab] = useState<Tab>('info')
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<any>({})
@@ -44,6 +45,12 @@ export default function CrmClientPage() {
     setContacts(co.data ?? [])
     setFollowups(f.data ?? [])
     setOrders(o.data ?? [])
+  const { data: offersData } = await supabase
+    .from('crm_offers')
+    .select('*, crm_offer_items(id, material, estatus, aceptado, precio_oferta, numero_pedido)')
+    .eq('client_id', id)
+    .order('created_at', { ascending: false })
+  setOffers(offersData ?? [])
 
     if (c.data?.solicitante) {
       const solicitante = c.data.solicitante
@@ -70,7 +77,7 @@ export default function CrmClientPage() {
       setSuggestions(filteredSug)
       setConsumption(con.data ?? [])
     }
-    
+
     if (f.data && f.data.length > 0) {
       const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)
       if (taskIds.length > 0) {
@@ -146,6 +153,7 @@ export default function CrmClientPage() {
     { key: 'seguimientos',  label: `Seguimientos (${followups.length})` },
     { key: 'sugerencias',   label: `Sugerencias SAP (${suggestions.length})` },
     { key: 'consumo',       label: `Consumo (${consumption.length})` },
+    { key: 'ofertas', label: `Ofertas (${offers.length})` },
     { key: 'pedidos',       label: `Pedidos (${orders.length})` },
     { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
   ]
@@ -550,6 +558,89 @@ export default function CrmClientPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB: Ofertas */}
+      {tab === 'ofertas' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Ofertas generadas</h2>
+            <button onClick={() => nav(`/crm/${id}/offer/new?source=manual`)}
+              className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
+              + Nueva oferta
+            </button>
+          </div>
+          {offers.length === 0 && (
+            <p className="text-sm text-gray-400 p-6">Sin ofertas registradas.</p>
+          )}
+          {offers.map(offer => {
+            const items = offer.crm_offer_items ?? []
+            const aceptados = items.filter((it: any) => it.aceptado).length
+            const facturados = items.filter((it: any) => it.estatus === 'facturado').length
+            const OFFER_COLOR: Record<string, string> = {
+              borrador:         'bg-gray-100 text-gray-500',
+              presentada:       'bg-blue-100 text-blue-700',
+              aceptada_parcial: 'bg-yellow-100 text-yellow-700',
+              aceptada:         'bg-green-100 text-green-700',
+              rechazada:        'bg-red-100 text-red-600',
+              en_proceso:       'bg-purple-100 text-purple-700',
+              cerrada:          'bg-green-200 text-green-800',
+            }
+            return (
+              <div key={offer.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${OFFER_COLOR[offer.estatus] ?? 'bg-gray-100 text-gray-500'}`}>
+                      {offer.estatus}
+                    </span>
+                    <span className="text-xs text-gray-400">{offer.tipo}</span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(offer.created_at).toLocaleDateString('es-MX')}
+                    </span>
+                  </div>
+                  <Link to={`/crm/${id}/offer/${offer.id}`}
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1.5 border border-teal-200 rounded-lg hover:bg-teal-50">
+                    Ver oferta →
+                  </Link>
+                </div>
+                <div className="flex gap-4 text-xs text-gray-400 mb-2">
+                  <span>{items.length} material(es)</span>
+                  <span className="text-green-600">{aceptados} aceptado(s)</span>
+                  <span className="text-purple-600">{facturados} facturado(s)</span>
+                </div>
+                {offer.notas && <p className="text-xs text-gray-400 italic">{offer.notas}</p>}
+                {/* Mini tabla de items */}
+                {items.length > 0 && (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {items.map((it: any) => (
+                          <tr key={it.id} className="border-t border-gray-50">
+                            <td className="py-1 pr-3 font-medium text-gray-700">{it.material}</td>
+                            <td className="py-1 pr-3 text-gray-400">
+                              {it.numero_pedido ?? <span className="italic">sin pedido</span>}
+                            </td>
+                            <td className="py-1 pr-3">
+                              {it.precio_oferta ? `$${Number(it.precio_oferta).toLocaleString('es-MX')}` : '—'}
+                            </td>
+                            <td className="py-1">
+                              <span className={`px-2 py-0.5 rounded-full font-medium ${
+                                it.estatus === 'facturado' ? 'bg-green-100 text-green-700' :
+                                it.estatus === 'aceptado' ? 'bg-teal-100 text-teal-700' :
+                                it.estatus === 'rechazado' ? 'bg-red-100 text-red-600' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>{it.estatus}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
