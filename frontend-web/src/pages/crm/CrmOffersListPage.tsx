@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import toast from 'react-hot-toast'
 
 const OFFER_COLOR: Record<string, string> = {
   borrador:         'bg-gray-100 text-gray-500',
@@ -33,8 +34,9 @@ export default function CrmOffersListPage() {
   const [filterEstatus, setFilterEstatus] = useState('')
   const [filterItemEstatus, setFilterItemEstatus] = useState('')
   const [search, setSearch] = useState('')
+  const [showClosed, setShowClosed] = useState(false)
 
-  useEffect(() => {
+  const load = async () => {
     setLoading(true)
     let q = supabase
       .from('crm_offers')
@@ -44,39 +46,52 @@ export default function CrmOffersListPage() {
         crm_offer_items(id, material, descripcion, estatus, aceptado,
           precio_oferta, numero_pedido, um, lotes, cedis_request_id, numero_factura)
       `)
-      .not('estatus','in','("cerrada","cancelado")')
       .order('created_at', { ascending: false })
 
+    if (!showClosed) {
+      q = q.not('estatus', 'in', '("cerrada","cancelado")')
+    }
     if (filterEstatus) q = q.eq('estatus', filterEstatus)
 
-    q.then(({ data }) => {
-      let result = data ?? []
+    const { data } = await q
+    let result = data ?? []
 
-      // Filtrar por estatus de item
-      if (filterItemEstatus) {
-        result = result.filter(o =>
-          o.crm_offer_items?.some((it: any) => it.estatus === filterItemEstatus)
+    if (filterItemEstatus) {
+      result = result.filter(o =>
+        o.crm_offer_items?.some((it: any) => it.estatus === filterItemEstatus)
+      )
+    }
+    if (search) {
+      const s = search.toLowerCase()
+      result = result.filter(o =>
+        o.crm_clients?.solicitante?.toLowerCase().includes(s) ||
+        o.crm_offer_items?.some((it: any) =>
+          it.material?.toLowerCase().includes(s) ||
+          it.numero_pedido?.toLowerCase().includes(s)
         )
-      }
+      )
+    }
 
-      // Filtrar por búsqueda
-      if (search) {
-        const s = search.toLowerCase()
-        result = result.filter(o =>
-          o.crm_clients?.solicitante?.toLowerCase().includes(s) ||
-          o.crm_offer_items?.some((it: any) =>
-            it.material?.toLowerCase().includes(s) ||
-            it.numero_pedido?.toLowerCase().includes(s)
-          )
-        )
-      }
+    setOffers(result)
+    setLoading(false)
+  }
 
-      setOffers(result)
-      setLoading(false)
-    })
-  }, [filterEstatus, filterItemEstatus, search])
+  useEffect(() => { load() }, [filterEstatus, filterItemEstatus, search, showClosed])
 
-  // Contadores para el resumen
+  const closeOffer = async (offerId: string) => {
+    if (!window.confirm('¿Cerrar esta oferta? Quedará archivada.')) return
+    await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', offerId)
+    toast.success('Oferta cerrada')
+    setOffers(prev => prev.filter(o => o.id !== offerId))
+  }
+
+  const cancelOffer = async (offerId: string) => {
+    if (!window.confirm('¿Cancelar esta oferta? Las sugerencias volverán a aparecer.')) return
+    await supabase.from('crm_offers').update({ estatus: 'cancelado' }).eq('id', offerId)
+    toast.success('Oferta cancelada')
+    setOffers(prev => prev.filter(o => o.id !== offerId))
+  }
+
   const totalItems = offers.reduce((acc, o) => acc + (o.crm_offer_items?.length ?? 0), 0)
   const aceptados  = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) => it.aceptado).length ?? 0), 0)
   const facturados = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) => it.estatus === 'facturado').length ?? 0), 0)
@@ -95,6 +110,11 @@ export default function CrmOffersListPage() {
           </div>
           <p className="text-sm text-gray-400">{offers.length} oferta(s) · {totalItems} materiales</p>
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+          <input type="checkbox" checked={showClosed}
+            onChange={e => setShowClosed(e.target.checked)} />
+          Mostrar cerradas y canceladas
+        </label>
       </div>
 
       {/* Resumen */}
@@ -145,11 +165,14 @@ export default function CrmOffersListPage() {
       <div className="space-y-3">
         {offers.map(offer => {
           const items = offer.crm_offer_items ?? []
+          const isClosed = ['cerrada','cancelado'].includes(offer.estatus)
           return (
-            <div key={offer.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* Header de la oferta */}
+            <div key={offer.id} className={`bg-white rounded-xl border overflow-hidden ${
+              isClosed ? 'border-gray-100 opacity-60' : 'border-gray-200'
+            }`}>
+              {/* Header */}
               <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <Link to={`/crm/${offer.client_id}`}
                     className="text-sm font-semibold text-teal-600 hover:text-teal-700">
                     {offer.crm_clients?.solicitante}
@@ -162,13 +185,27 @@ export default function CrmOffersListPage() {
                     {new Date(offer.created_at).toLocaleDateString('es-MX')}
                   </span>
                 </div>
-                <Link to={`/crm/${offer.client_id}/offer/${offer.id}`}
-                  className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1.5 border border-teal-200 rounded-lg hover:bg-teal-50">
-                  Abrir oferta →
-                </Link>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!isClosed && (
+                    <>
+                      <button onClick={() => closeOffer(offer.id)}
+                        className="text-xs border border-green-400 text-green-600 px-3 py-1.5 rounded-lg font-medium hover:bg-green-50">
+                        ✅ Cerrar
+                      </button>
+                      <button onClick={() => cancelOffer(offer.id)}
+                        className="text-xs border border-red-300 text-red-500 px-3 py-1.5 rounded-lg font-medium hover:bg-red-50">
+                        Cancelar
+                      </button>
+                    </>
+                  )}
+                  <Link to={`/crm/${offer.client_id}/offer/${offer.id}`}
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1.5 border border-teal-200 rounded-lg hover:bg-teal-50">
+                    Abrir →
+                  </Link>
+                </div>
               </div>
 
-              {/* Items de la oferta */}
+              {/* Items */}
               {items.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -213,9 +250,7 @@ export default function CrmOffersListPage() {
                                 {it.estatus?.replace(/_/g, ' ')}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-gray-500">
-                              {it.numero_factura ?? '—'}
-                            </td>
+                            <td className="px-3 py-2 text-gray-500">{it.numero_factura ?? '—'}</td>
                           </tr>
                         )
                       })}
