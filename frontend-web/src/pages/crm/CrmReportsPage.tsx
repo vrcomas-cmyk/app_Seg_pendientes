@@ -131,12 +131,21 @@ export default function CrmReportsPage() {
     setLoading(true)
     setSelected([])
     const table = tab === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
-    const { data: rows } = await supabase.from(table).select('*').order(
-      tab === 'suggestions' ? 'fecha' : 'solicitante',
-      { ascending: false }
-    ).limit(5000)
-    setData(rows ?? [])
-    setFiltered(rows ?? [])
+    let allRows: any[] = []
+    let page = 0
+    const PAGE_SIZE = 1000
+    while (true) {
+      const { data: chunk } = await supabase.from(table)
+        .select('*')
+        .order(tab === 'suggestions' ? 'fecha' : 'solicitante', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+      if (!chunk || chunk.length === 0) break
+      allRows = [...allRows, ...chunk]
+      if (chunk.length < PAGE_SIZE) break
+      page++
+    }
+    setData(allRows)
+    setFiltered(allRows)
     setLoading(false)
   }, [tab])
 
