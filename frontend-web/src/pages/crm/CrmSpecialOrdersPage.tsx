@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
-import { useNavigate, Link } from 'react-router-dom'
 
 const COLUMNS = [
   { key: 'gpo_cliente',            label: 'Gpo. Cte.' },
@@ -31,54 +31,54 @@ const COLUMNS = [
   { key: 'fecha_caducidad',        label: 'Fecha de Caducidad' },
 ]
 
-const ESTATUS_COLOR: Record<string, string> = {
-  pendiente:          'bg-yellow-100 text-yellow-700',
-  requiere_material:  'bg-orange-100 text-orange-700',
-  en_surtido:         'bg-blue-100 text-blue-700',
-  facturado:          'bg-purple-100 text-purple-700',
-  entregado:          'bg-green-100 text-green-700',
-  cancelado:          'bg-gray-100 text-gray-500',
-}
-
 const ESTATUS_OPTIONS = [
-  { value: 'pendiente',         label: 'Pendiente' },
-  { value: 'requiere_material', label: 'Requiere material' },
-  { value: 'en_surtido',       label: 'En surtido' },
-  { value: 'facturado',        label: 'Facturado' },
-  { value: 'entregado',        label: 'Entregado' },
-  { value: 'cancelado',        label: 'Cancelado' },
+  { value: 'pendiente',          label: 'Pendiente',           color: 'bg-gray-100 text-gray-600' },
+  { value: 'contactado',         label: 'Contactado',          color: 'bg-blue-100 text-blue-700' },
+  { value: 'interesado',         label: 'Interesado',          color: 'bg-teal-100 text-teal-700' },
+  { value: 'requiere_material',  label: 'Requiere material',   color: 'bg-orange-100 text-orange-700' },
+  { value: 'aceptado',           label: 'Aceptado',            color: 'bg-green-100 text-green-700' },
+  { value: 'en_surtido',         label: 'En surtido',          color: 'bg-purple-100 text-purple-700' },
+  { value: 'movimiento_cedis',   label: 'Movimiento CEDIS',    color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'facturado',          label: 'Facturado',           color: 'bg-indigo-100 text-indigo-700' },
+  { value: 'enviado',            label: 'Enviado',             color: 'bg-cyan-100 text-cyan-700' },
+  { value: 'entregado',          label: 'Entregado',           color: 'bg-green-200 text-green-800' },
+  { value: 'no_interesado',      label: 'No interesado',       color: 'bg-red-100 text-red-600' },
+  { value: 'cancelado',          label: 'Cancelado',           color: 'bg-gray-100 text-gray-400' },
 ]
 
-// Parsear fecha desde Excel (puede venir como número serial o string)
+const estatusColor = (e: string) =>
+  ESTATUS_OPTIONS.find(o => o.value === e)?.color ?? 'bg-gray-100 text-gray-500'
+const estatusLabel = (e: string) =>
+  ESTATUS_OPTIONS.find(o => o.value === e)?.label ?? e
+
+// Grupos de estatus para el flujo visual
+const FLOW_STEPS = [
+  { label: 'Contacto',   values: ['pendiente','contactado','interesado','no_interesado'] },
+  { label: 'Decisión',   values: ['aceptado','requiere_material'] },
+  { label: 'Logística',  values: ['en_surtido','movimiento_cedis'] },
+  { label: 'Cierre',     values: ['facturado','enviado','entregado','cancelado'] },
+]
+
 function parseExcelDate(val: string): string {
   if (!val?.trim()) return ''
   const v = val.trim()
-
-  // Formato DD/MM/YYYY (el más común en México)
   const ddmmyyyy = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (ddmmyyyy) {
     const [, d, m, y] = ddmmyyyy
     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
   }
-
-  // Formato DD-MM-YYYY
   const ddmmyyyyDash = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
   if (ddmmyyyyDash) {
     const [, d, m, y] = ddmmyyyyDash
     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
   }
-
-  // Número serial de Excel
   const num = parseFloat(v)
   if (!isNaN(num) && num > 1000) {
     const date = new Date((num - 25569) * 86400 * 1000)
     return date.toISOString().split('T')[0]
   }
-
-  // Ya viene como YYYY-MM-DD u otro formato estándar
   const d = new Date(v)
   if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
-
   return ''
 }
 
@@ -105,13 +105,25 @@ export default function CrmSpecialOrdersPage() {
   const [newComentario, setNewComentario] = useState('')
   const [updatingStatus, setUpdatingStatus] = useState(false)
 
+  // Formulario de venta
+  const [showSaleForm, setShowSaleForm] = useState(false)
+  const [saleForm, setSaleForm] = useState({
+    cantidad_vendida: '', precio_venta: '', numero_factura: '',
+    fecha_entrega: '', ejecutivo: '',
+  })
+
+  // Formulario CEDIS
+  const [showCedisForm, setShowCedisForm] = useState(false)
+  const [cedisForm, setCedisForm] = useState({
+    centro_origen: '', almacen_origen: '',
+    centro_destino: '', almacen_destino: '',
+    cantidad: '', um: '', comentarios: '',
+  })
+
   const load = async () => {
     setLoading(true)
-    let q = supabase
-      .from('crm_special_orders')
-      .select('*')
-      .order('fecha', { ascending: false })
-      .order('pedido')
+    let q = supabase.from('crm_special_orders').select('*')
+      .order('fecha', { ascending: false }).order('pedido')
     if (filterEstatus) q = q.eq('estatus', filterEstatus)
     if (search) q = q.or(
       `pedido.ilike.%${search}%,solicitante.ilike.%${search}%,destinatario.ilike.%${search}%,material_solicitado.ilike.%${search}%`
@@ -126,17 +138,38 @@ export default function CrmSpecialOrdersPage() {
   const loadDetail = async (id: string) => {
     const [o, h] = await Promise.all([
       supabase.from('crm_special_orders').select('*').eq('id', id).single(),
-      supabase.from('crm_special_order_history').select('*, users:created_by(full_name,email)')
+      supabase.from('crm_special_order_history')
+        .select('*, users:created_by(full_name,email)')
         .eq('order_id', id).order('created_at', { ascending: false }),
     ])
     setDetail(o.data)
     setHistory(h.data ?? [])
     setNewEstatus(o.data?.estatus ?? '')
+    if (o.data) {
+      setSaleForm({
+        cantidad_vendida: o.data.cantidad_vendida ?? '',
+        precio_venta:     o.data.precio_venta ?? '',
+        numero_factura:   o.data.numero_factura ?? '',
+        fecha_entrega:    o.data.fecha_entrega ?? '',
+        ejecutivo:        o.data.ejecutivo ?? '',
+      })
+      setCedisForm({
+        centro_origen:   o.data.centro_sugerido ?? '',
+        almacen_origen:  o.data.almacen_sugerido ?? '',
+        centro_destino:  o.data.centro_pedido ?? '',
+        almacen_destino: o.data.almacen ?? '',
+        cantidad:        o.data.cantidad_ofertar ?? '',
+        um:              '',
+        comentarios:     '',
+      })
+    }
   }
 
   const openDetail = (id: string) => {
     setDetailId(id)
     loadDetail(id)
+    setShowSaleForm(false)
+    setShowCedisForm(false)
   }
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -148,23 +181,16 @@ export default function CrmSpecialOrdersPage() {
   const parsePastedText = (text: string) => {
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (lines.length === 0) return
-
-    // Detectar si la primera línea es encabezado (contiene palabras clave)
     const firstLine = lines[0].toLowerCase()
     const isHeader = firstLine.includes('pedido') || firstLine.includes('material') ||
-      firstLine.includes('solicitante') || firstLine.includes('fecha') ||
-      firstLine.includes('gpo')
+      firstLine.includes('solicitante') || firstLine.includes('fecha') || firstLine.includes('gpo')
     const dataLines = isHeader ? lines.slice(1) : lines
-
     const rows = dataLines.map(line => {
       const cells = line.split('\t')
       const row: Record<string, string> = {}
-      COLUMNS.forEach((col, i) => {
-        row[col.key] = cells[i]?.trim() ?? ''
-      })
+      COLUMNS.forEach((col, i) => { row[col.key] = cells[i]?.trim() ?? '' })
       return row
     }).filter(r => COLUMNS.some(c => r[c.key]?.trim()))
-
     setPastedRows(rows)
     toast.success(`${rows.length} línea(s) detectadas`)
   }
@@ -205,21 +231,16 @@ export default function CrmSpecialOrdersPage() {
       client_id:              null as string | null,
     }))
 
-    // Buscar y vincular cliente por Solicitante automáticamente
     const solicitantes = [...new Set(inserts.map(r => r.solicitante).filter(Boolean))]
     if (solicitantes.length > 0) {
       const { data: clientsFound } = await supabase
-        .from('crm_clients')
-        .select('id, solicitante')
+        .from('crm_clients').select('id, solicitante')
         .in('solicitante', solicitantes as string[])
-
-      if (clientsFound && clientsFound.length > 0) {
+      if (clientsFound?.length) {
         const clientMap: Record<string, string> = {}
         clientsFound.forEach(c => { clientMap[c.solicitante] = c.id })
         inserts.forEach(r => {
-          if (r.solicitante && clientMap[r.solicitante]) {
-            r.client_id = clientMap[r.solicitante]
-          }
+          if (r.solicitante && clientMap[r.solicitante]) r.client_id = clientMap[r.solicitante]
         })
         const linked = inserts.filter(r => r.client_id).length
         if (linked > 0) toast.success(`${linked} línea(s) vinculadas a cliente CRM`)
@@ -228,11 +249,8 @@ export default function CrmSpecialOrdersPage() {
 
     const { error } = await supabase.from('crm_special_orders').insert(inserts)
     if (error) { toast.error(error.message); setSaving(false); return }
-
-    toast.success(`${inserts.length} línea(s) cargadas correctamente`)
-    setPastedRows([])
-    setView('list')
-    load()
+    toast.success(`${inserts.length} línea(s) cargadas`)
+    setPastedRows([]); setView('list'); load()
     setSaving(false)
   }
 
@@ -240,25 +258,111 @@ export default function CrmSpecialOrdersPage() {
     if (!detailId || !newEstatus) return
     setUpdatingStatus(true)
     const { data: { user } } = await supabase.auth.getUser()
-
     await supabase.from('crm_special_order_history').insert({
-      order_id:        detailId,
-      estatus_anterior: detail?.estatus,
-      estatus_nuevo:   newEstatus,
-      comentario:      newComentario || null,
-      created_by:      user?.id,
+      order_id: detailId, estatus_anterior: detail?.estatus,
+      estatus_nuevo: newEstatus, comentario: newComentario || null, created_by: user?.id,
     })
-
     await supabase.from('crm_special_orders').update({
-      estatus:     newEstatus,
+      estatus: newEstatus,
       comentarios: newComentario || detail?.comentarios,
     }).eq('id', detailId)
-
     toast.success('Estatus actualizado')
     setNewComentario('')
-    loadDetail(detailId)
-    load()
+    loadDetail(detailId); load()
     setUpdatingStatus(false)
+  }
+
+  const saveSale = async () => {
+    if (!detailId) return
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('crm_special_orders').update({
+      cantidad_vendida: saleForm.cantidad_vendida ? parseFloat(saleForm.cantidad_vendida) : null,
+      precio_venta:     saleForm.precio_venta ? parseFloat(saleForm.precio_venta) : null,
+      numero_factura:   saleForm.numero_factura || null,
+      fecha_entrega:    saleForm.fecha_entrega || null,
+      ejecutivo:        saleForm.ejecutivo || null,
+      estatus:          'facturado',
+    }).eq('id', detailId)
+
+    await supabase.from('crm_special_order_history').insert({
+      order_id: detailId, estatus_anterior: detail?.estatus,
+      estatus_nuevo: 'facturado',
+      comentario: `Factura: ${saleForm.numero_factura} · Cant: ${saleForm.cantidad_vendida} · Precio: $${saleForm.precio_venta}`,
+      created_by: user?.id,
+    })
+    toast.success('Venta registrada')
+    setShowSaleForm(false)
+    loadDetail(detailId); load()
+  }
+
+  const saveCedis = async () => {
+    if (!detailId || !detail) return
+    if (!cedisForm.centro_origen || !cedisForm.centro_destino || !cedisForm.cantidad) {
+      return toast.error('Centro origen, destino y cantidad son obligatorios')
+    }
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // Crear requerimiento CEDIS — necesita un order_id
+    // Creamos una orden CRM temporal si no existe
+    let orderId = detail.order_id
+    if (!orderId) {
+      const { data: newOrder } = await supabase.from('crm_orders').insert({
+        followup_id:   null,
+        client_id:     detail.client_id,
+        numero_pedido: detail.pedido ?? `ESP-${detail.id.slice(0,8)}`,
+        estatus:       'en_proceso',
+        comentarios:   `Pedido especial: ${detail.material_solicitado}`,
+        created_by:    user?.id,
+      }).select('id').single()
+      orderId = newOrder?.id
+      await supabase.from('crm_special_orders').update({ order_id: orderId }).eq('id', detailId)
+    }
+
+    const condicion = detail.condicion ?? 'obsoleto'
+    const condMap: Record<string,string> = {
+      corta_caducidad: 'Corta caducidad', danado: 'Dañado',
+      obsoleto: 'Material Obsoleto', otro: 'Otro',
+    }
+    const autoComment = cedisForm.comentarios ||
+      `${condMap[condicion] ?? 'Material Obsoleto'} // Pedido ${detail.pedido ?? ''}`
+
+    const { data: cedisReq } = await supabase.from('crm_cedis_requests').insert({
+      order_id:        orderId,
+      fecha_solicitud: new Date().toISOString().split('T')[0],
+      centro_origen:   cedisForm.centro_origen,
+      almacen_origen:  cedisForm.almacen_origen || null,
+      centro_destino:  cedisForm.centro_destino,
+      almacen_destino: cedisForm.almacen_destino || null,
+      codigo:          detail.material_sugerido ?? detail.material_solicitado,
+      descripcion:     detail.descripcion_sugerida ?? detail.descripcion_solicitada,
+      cantidad:        parseFloat(cedisForm.cantidad),
+      um:              cedisForm.um || null,
+      lote:            detail.lote || null,
+      fecha_caducidad: detail.fecha_caducidad || null,
+      comentarios:     autoComment,
+      estatus:         'solicitado',
+      created_by:      user?.id,
+    }).select('id').single()
+
+    if (cedisReq) {
+      await supabase.from('crm_cedis_history').insert({
+        request_id: cedisReq.id, estatus_nuevo: 'solicitado',
+        comentario: 'Requerimiento creado desde pedido especial', created_by: user?.id,
+      })
+      await supabase.from('crm_special_orders').update({
+        cedis_id: cedisReq.id, estatus: 'movimiento_cedis',
+      }).eq('id', detailId)
+      await supabase.from('crm_special_order_history').insert({
+        order_id: detailId, estatus_anterior: detail.estatus,
+        estatus_nuevo: 'movimiento_cedis',
+        comentario: `Requerimiento CEDIS creado: ${cedisForm.centro_origen} → ${cedisForm.centro_destino}`,
+        created_by: user?.id,
+      })
+    }
+
+    toast.success('Requerimiento CEDIS generado')
+    setShowCedisForm(false)
+    loadDetail(detailId); load()
   }
 
   const deleteOrder = async (id: string) => {
@@ -280,12 +384,10 @@ export default function CrmSpecialOrdersPage() {
           </div>
           <p className="text-sm text-gray-400">{orders.length} registros</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setView('paste'); setPastedRows([]) }}
-            className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-            + Cargar desde Excel
-          </button>
-        </div>
+        <button onClick={() => { setView('paste'); setPastedRows([]) }}
+          className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+          + Cargar desde Excel
+        </button>
       </div>
 
       {/* Vista: pegar desde Excel */}
@@ -293,45 +395,33 @@ export default function CrmSpecialOrdersPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           <h2 className="font-semibold text-gray-700 mb-2">Pegar desde Excel</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Copia las filas directamente desde Excel (sin encabezados o con encabezados, se detectan automáticamente)
-            y pégalas aquí con <kbd className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">Ctrl+V</kbd>.
-            El orden de columnas debe ser el mismo que en tu reporte.
+            Copia las filas directamente desde Excel y pégalas aquí con{' '}
+            <kbd className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">Ctrl+V</kbd>.
           </p>
-
           {pastedRows.length === 0 ? (
-            <textarea
-              ref={pasteRef}
+            <textarea ref={pasteRef}
               className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl p-4 text-sm text-gray-400 outline-none focus:border-teal-400 resize-none"
               placeholder="Haz clic aquí y pega con Ctrl+V..."
-              onPaste={handlePaste}
-              onChange={() => {}}
-              value="" />
+              onPaste={handlePaste} onChange={() => {}} value="" />
           ) : (
             <>
               <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 mb-4 flex items-center justify-between">
-                <p className="text-sm font-semibold text-teal-700">
-                  {pastedRows.length} línea(s) listas para importar
-                </p>
-                <button onClick={() => setPastedRows([])}
-                  className="text-xs text-gray-400 hover:text-red-500">Limpiar</button>
+                <p className="text-sm font-semibold text-teal-700">{pastedRows.length} línea(s) listas</p>
+                <button onClick={() => setPastedRows([])} className="text-xs text-gray-400 hover:text-red-500">Limpiar</button>
               </div>
-
-              {/* Preview de las filas pegadas */}
-              <div className="overflow-x-auto rounded-xl border border-gray-200 mb-4" style={{ maxHeight: '340px' }}>
+              <div className="overflow-x-auto rounded-xl border border-gray-200 mb-4" style={{ maxHeight: '300px' }}>
                 <table className="text-xs border-collapse w-full">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
-                      <th className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">#</th>
+                      <th className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200">#</th>
                       {COLUMNS.map(c => (
-                        <th key={c.key} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">
-                          {c.label}
-                        </th>
+                        <th key={c.key} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{c.label}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {pastedRows.map((row, i) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                      <tr key={i} className="border-b border-gray-100">
                         <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
                         {COLUMNS.map(c => (
                           <td key={c.key} className="px-2 py-1.5 text-gray-700 whitespace-nowrap max-w-xs truncate">
@@ -343,7 +433,6 @@ export default function CrmSpecialOrdersPage() {
                   </tbody>
                 </table>
               </div>
-
               <div className="flex gap-2">
                 <button onClick={handleSavePasted} disabled={saving}
                   className="bg-teal-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
@@ -365,21 +454,16 @@ export default function CrmSpecialOrdersPage() {
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:border-teal-400 flex-1 min-w-48"
           placeholder="Buscar por pedido, solicitante, destinatario, material..."
           value={search} onChange={e => setSearch(e.target.value)} />
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+        <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
           value={filterEstatus} onChange={e => setFilterEstatus(e.target.value)}>
           <option value="">Todos los estatus</option>
-          {ESTATUS_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          {ESTATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
 
-      {/* Tabla principal + panel de detalle */}
       <div className={`flex gap-4 ${detailId ? 'items-start' : ''}`}>
-
         {/* Tabla */}
-        <div className={`${detailId ? 'flex-1 min-w-0' : 'w-full'}`}>
+        <div className={detailId ? 'flex-1 min-w-0' : 'w-full'}>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {loading && <p className="text-sm text-gray-400 p-6">Cargando...</p>}
             {!loading && orders.length === 0 && (
@@ -396,33 +480,21 @@ export default function CrmSpecialOrdersPage() {
                 <table className="text-xs border-collapse w-full">
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Estatus</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Pedido</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Fecha</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Solicitante</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Destinatario</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Material</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Descripción</th>
-                      <th className="px-3 py-2.5 text-right text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Cant. Pedido</th>
-                      <th className="px-3 py-2.5 text-right text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Cant. Ofertar</th>
-                      <th className="px-3 py-2.5 text-right text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Precio</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Lote</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Caducidad</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Mat. Sugerido</th>
-                      <th className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">Centro</th>
-                      <th className="w-8 border-b border-gray-200"></th>
+                      {['Estatus','Pedido','Fecha','Solicitante','Destinatario','Material','Descripción',
+                        'Cant. Pedido','Cant. Ofertar','Precio','Disponible','Lote','Caducidad','Mat. Sugerido','Centro',''].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {orders.map(o => (
-                      <tr key={o.id}
-                        onClick={() => openDetail(o.id)}
-                        className={`border-b border-gray-100 cursor-pointer transition ${
-                          detailId === o.id ? 'bg-teal-50' : 'hover:bg-gray-50'
-                        }`}>
+                      <tr key={o.id} onClick={() => openDetail(o.id)}
+                        className={`border-b border-gray-100 cursor-pointer transition ${detailId === o.id ? 'bg-teal-50' : 'hover:bg-gray-50'}`}>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTATUS_COLOR[o.estatus]}`}>
-                            {ESTATUS_OPTIONS.find(e => e.value === o.estatus)?.label ?? o.estatus}
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estatusColor(o.estatus)}`}>
+                            {estatusLabel(o.estatus)}
                           </span>
                         </td>
                         <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{o.pedido}</td>
@@ -430,12 +502,8 @@ export default function CrmSpecialOrdersPage() {
                         <td className="px-3 py-2 whitespace-nowrap max-w-32 truncate">
                           {o.client_id ? (
                             <Link to={`/crm/${o.client_id}`} onClick={e => e.stopPropagation()}
-                              className="text-teal-600 hover:text-teal-700 font-medium text-xs">
-                              {o.solicitante}
-                            </Link>
-                          ) : (
-                            <span className="text-gray-700">{o.solicitante}</span>
-                          )}
+                              className="text-teal-600 hover:underline font-medium">{o.solicitante}</Link>
+                          ) : <span className="text-gray-700">{o.solicitante}</span>}
                         </td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap max-w-32 truncate">{o.destinatario}</td>
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap font-medium">{o.material_solicitado}</td>
@@ -445,6 +513,7 @@ export default function CrmSpecialOrdersPage() {
                         <td className="px-3 py-2 text-right text-gray-700">
                           {o.precio != null ? `$${Number(o.precio).toLocaleString('es-MX')}` : '—'}
                         </td>
+                        <td className="px-3 py-2 text-right text-gray-700">{o.disponible ?? '—'}</td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{o.lote ?? '—'}</td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{o.fecha_caducidad ?? '—'}</td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{o.material_sugerido ?? '—'}</td>
@@ -462,50 +531,72 @@ export default function CrmSpecialOrdersPage() {
           </div>
         </div>
 
-        {/* Panel de detalle y seguimiento */}
+        {/* Panel de detalle */}
         {detailId && detail && (
-          <div className="w-96 flex-shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden"
-            style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 sticky top-0">
-              <p className="text-sm font-bold text-gray-800">Pedido {detail.pedido}</p>
+          <div className="w-96 flex-shrink-0 bg-white rounded-xl border border-gray-200"
+            style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
+              <div>
+                <p className="text-sm font-bold text-gray-800">Pedido {detail.pedido}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estatusColor(detail.estatus)}`}>
+                  {estatusLabel(detail.estatus)}
+                </span>
+              </div>
               <button onClick={() => setDetailId(null)} className="text-gray-400 hover:text-gray-600 text-lg">×</button>
             </div>
 
-            <div className="p-4 space-y-3 text-xs">
+            {/* Flujo visual de estatus */}
+            <div className="px-4 pt-4 pb-2">
+              <div className="flex gap-1">
+                {FLOW_STEPS.map((step, si) => {
+                  const active = step.values.includes(detail.estatus)
+                  const done = FLOW_STEPS.slice(0, si).some(s => s.values.includes(detail.estatus))
+                  return (
+                    <div key={step.label} className="flex-1 text-center">
+                      <div className={`h-1.5 rounded-full mb-1 ${active ? 'bg-teal-500' : done ? 'bg-teal-200' : 'bg-gray-100'}`} />
+                      <p className={`text-xs ${active ? 'text-teal-600 font-semibold' : 'text-gray-400'}`}>
+                        {step.label}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="px-4 pb-4 space-y-4 text-xs">
               {/* Info del registro */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ['Solicitante', detail.solicitante],
-                  ['Destinatario', detail.destinatario],
-                  ['Razón Social', detail.razon_social],
-                  ['Gpo. Cte.', detail.gpo_cliente],
-                  ['Gpo. Vdor.', detail.gpo_vendedor],
-                  ['Centro', detail.centro_pedido],
-                  ['Almacén', detail.almacen],
-                  ['Fecha', detail.fecha],
-                ].filter(([, v]) => v).map(([label, val]) => (
-                  <div key={label as string}>
-                    <p className="text-gray-400">{label as string}</p>
-                    <p className="font-medium text-gray-700">{val as string}</p>
+                  ['Solicitante', detail.solicitante], ['Destinatario', detail.destinatario],
+                  ['Razón Social', detail.razon_social], ['Gpo. Cte.', detail.gpo_cliente],
+                  ['Ejecutivo', detail.gpo_vendedor], ['Centro', detail.centro_pedido],
+                  ['Almacén', detail.almacen], ['Fecha', detail.fecha],
+                ].filter(([,v]) => v).map(([l, v]) => (
+                  <div key={l as string}>
+                    <p className="text-gray-400">{l as string}</p>
+                    <p className="font-medium text-gray-700">{v as string}</p>
                   </div>
                 ))}
               </div>
 
+              {/* Material */}
               <div className="border-t border-gray-100 pt-3">
                 <p className="text-gray-400 mb-1">Material solicitado</p>
                 <p className="font-semibold text-gray-800">{detail.material_solicitado}</p>
                 {detail.descripcion_solicitada && <p className="text-gray-500">{detail.descripcion_solicitada}</p>}
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div><p className="text-gray-400">Cant. pedido</p><p className="font-medium">{detail.cantidad_pedido ?? '—'}</p></div>
+                  <div><p className="text-gray-400">Cant. ofertar</p><p className="font-medium">{detail.cantidad_ofertar ?? '—'}</p></div>
+                  <div><p className="text-gray-400">Precio</p><p className="font-medium">{detail.precio != null ? `$${Number(detail.precio).toLocaleString('es-MX')}` : '—'}</p></div>
+                  <div><p className="text-gray-400">Disponible</p><p className="font-medium">{detail.disponible ?? '—'}</p></div>
+                  <div><p className="text-gray-400">Lote</p><p className="font-medium">{detail.lote ?? '—'}</p></div>
+                  <div><p className="text-gray-400">Caducidad</p><p className="font-medium">{detail.fecha_caducidad ?? '—'}</p></div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-                <div><p className="text-gray-400">Cant. pedido</p><p className="font-medium">{detail.cantidad_pedido ?? '—'}</p></div>
-                <div><p className="text-gray-400">Cant. ofertar</p><p className="font-medium">{detail.cantidad_ofertar ?? '—'}</p></div>
-                <div><p className="text-gray-400">Precio</p><p className="font-medium">{detail.precio != null ? `$${Number(detail.precio).toLocaleString('es-MX')}` : '—'}</p></div>
-                <div><p className="text-gray-400">Disponible</p><p className="font-medium">{detail.disponible ?? '—'}</p></div>
-                <div><p className="text-gray-400">Lote</p><p className="font-medium">{detail.lote ?? '—'}</p></div>
-                <div><p className="text-gray-400">Caducidad</p><p className="font-medium">{detail.fecha_caducidad ?? '—'}</p></div>
-              </div>
-
+              {/* Material sugerido */}
               {(detail.material_sugerido || detail.centro_sugerido) && (
                 <div className="border-t border-gray-100 pt-3">
                   <p className="text-gray-400 mb-1">Material sugerido</p>
@@ -518,20 +609,132 @@ export default function CrmSpecialOrdersPage() {
                 </div>
               )}
 
+              {/* Info de venta si ya existe */}
+              {detail.numero_factura && (
+                <div className="border-t border-gray-100 pt-3 bg-green-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-green-700 mb-1">Venta registrada</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    <div><p className="text-gray-400">Factura</p><p className="font-medium">{detail.numero_factura}</p></div>
+                    <div><p className="text-gray-400">Cantidad</p><p className="font-medium">{detail.cantidad_vendida}</p></div>
+                    <div><p className="text-gray-400">Precio venta</p><p className="font-medium">${Number(detail.precio_venta).toLocaleString('es-MX')}</p></div>
+                    <div><p className="text-gray-400">Entrega</p><p className="font-medium">{detail.fecha_entrega ?? '—'}</p></div>
+                    {detail.ejecutivo && <div className="col-span-2"><p className="text-gray-400">Ejecutivo</p><p className="font-medium">{detail.ejecutivo}</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Link a CEDIS si existe */}
+              {detail.cedis_id && (
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-xs font-semibold text-yellow-700 mb-1">Requerimiento CEDIS activo</p>
+                  <Link to={`/crm/${detail.client_id ?? '_'}/order/${detail.order_id ?? '_'}/cedis`}
+                    className="text-xs text-teal-600 hover:underline">
+                    Ver requerimiento CEDIS →
+                  </Link>
+                </div>
+              )}
+
+              {/* Botones de acción según estatus */}
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-700">Acciones</p>
+                <div className="flex flex-wrap gap-2">
+                  {!['entregado','cancelado','no_interesado'].includes(detail.estatus) && (
+                    <button onClick={() => setShowSaleForm(!showSaleForm)}
+                      className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-green-700">
+                      💰 Registrar venta
+                    </button>
+                  )}
+                  {!['entregado','cancelado','movimiento_cedis'].includes(detail.estatus) && (
+                    <button onClick={() => setShowCedisForm(!showCedisForm)}
+                      className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-600">
+                      🚚 Req. CEDIS
+                    </button>
+                  )}
+                  {detail.client_id && (
+                    <Link to={`/crm/${detail.client_id}`}
+                      className="text-xs bg-teal-50 text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg font-medium hover:bg-teal-100">
+                      Ver cliente →
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* Formulario registrar venta */}
+              {showSaleForm && (
+                <div className="border border-green-200 rounded-xl p-3 bg-green-50 space-y-2">
+                  <p className="text-xs font-semibold text-green-700">Registrar venta</p>
+                  {[
+                    { label: 'Cantidad vendida', key: 'cantidad_vendida', type: 'number' },
+                    { label: 'Precio de venta', key: 'precio_venta', type: 'number' },
+                    { label: 'Número de factura', key: 'numero_factura', type: 'text' },
+                    { label: 'Fecha de entrega', key: 'fecha_entrega', type: 'date' },
+                    { label: 'Ejecutivo responsable', key: 'ejecutivo', type: 'text' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="text-gray-500 block mb-0.5">{f.label}</label>
+                      <input type={f.type}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white outline-none focus:border-green-400"
+                        value={saleForm[f.key as keyof typeof saleForm]}
+                        onChange={e => setSaleForm(x => ({ ...x, [f.key]: e.target.value }))} />
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <button onClick={saveSale}
+                      className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">
+                      Guardar venta
+                    </button>
+                    <button onClick={() => setShowSaleForm(false)}
+                      className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario CEDIS */}
+              {showCedisForm && (
+                <div className="border border-amber-200 rounded-xl p-3 bg-amber-50 space-y-2">
+                  <p className="text-xs font-semibold text-amber-700">Requerimiento de movimiento CEDIS</p>
+                  {[
+                    { label: 'Centro Origen *', key: 'centro_origen' },
+                    { label: 'Almacén Origen', key: 'almacen_origen' },
+                    { label: 'Centro Destino *', key: 'centro_destino' },
+                    { label: 'Almacén Destino', key: 'almacen_destino' },
+                    { label: 'Cantidad *', key: 'cantidad', type: 'number' },
+                    { label: 'UM', key: 'um' },
+                    { label: 'Comentario (auto-generado si vacío)', key: 'comentarios' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="text-gray-500 block mb-0.5">{f.label}</label>
+                      <input type={f.type ?? 'text'}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white outline-none focus:border-amber-400"
+                        value={cedisForm[f.key as keyof typeof cedisForm]}
+                        onChange={e => setCedisForm(x => ({ ...x, [f.key]: e.target.value }))} />
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <button onClick={saveCedis}
+                      className="bg-amber-500 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-600">
+                      Crear requerimiento
+                    </button>
+                    <button onClick={() => setShowCedisForm(false)}
+                      className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Actualizar estatus */}
               <div className="border-t border-gray-100 pt-3">
-                <p className="text-xs font-semibold text-gray-700 mb-2">Actualizar seguimiento</p>
-                <select
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 outline-none"
+                <p className="text-xs font-semibold text-gray-700 mb-2">Cambiar estatus / agregar nota</p>
+                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 outline-none"
                   value={newEstatus} onChange={e => setNewEstatus(e.target.value)}>
-                  {ESTATUS_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                  {ESTATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 <textarea
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-16 resize-none outline-none focus:border-teal-400 mb-2"
-                  placeholder="Comentario (opcional)"
-                  value={newComentario}
+                  placeholder="Comentario (opcional)" value={newComentario}
                   onChange={e => setNewComentario(e.target.value)} />
                 <button onClick={updateStatus} disabled={updatingStatus}
                   className="w-full bg-teal-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
@@ -546,8 +749,8 @@ export default function CrmSpecialOrdersPage() {
                   {history.map(h => (
                     <div key={h.id} className="mb-2 pb-2 border-b border-gray-50 last:border-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ESTATUS_COLOR[h.estatus_nuevo]}`}>
-                          {ESTATUS_OPTIONS.find(e => e.value === h.estatus_nuevo)?.label ?? h.estatus_nuevo}
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${estatusColor(h.estatus_nuevo)}`}>
+                          {estatusLabel(h.estatus_nuevo)}
                         </span>
                         <span className="text-gray-300">{new Date(h.created_at).toLocaleDateString('es-MX')}</span>
                       </div>
