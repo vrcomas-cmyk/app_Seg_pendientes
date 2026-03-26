@@ -189,7 +189,7 @@ export default function CrmClientPage() {
     { key: 'seguimientos',  label: `Seguimientos (${followups.length})` },
     { key: 'sugerencias',   label: `Sugerencias SAP (${suggestions.length})` },
     { key: 'consumo',       label: `Consumo (${consumption.length})` },
-    { key: 'ofertas',       label: `Ofertas (${offers.length})` },
+    { key: 'ofertas', label: `Ofertas (${offers.filter(o => (o.crm_offer_items ?? []).some((it: any) => !it.aceptado && it.estatus !== 'rechazado')).length})` },
     { key: 'ventas',        label: `Ventas (${ventas.length})` },
     { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
   ]
