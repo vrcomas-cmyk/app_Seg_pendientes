@@ -31,20 +31,19 @@ const emptyRow = (): CedisRow => ({
 })
 
 const COLS: { key: keyof CedisRow; label: string; width: string; type?: string }[] = [
-  { key: 'codigo',          label: 'Código *',       width: 'w-28' },
-  { key: 'descripcion',     label: 'Descripción',     width: 'w-48' },
-  { key: 'cantidad',        label: 'Cantidad *',      width: 'w-20', type: 'number' },
-  { key: 'um',              label: 'UM',              width: 'w-16' },
-  { key: 'lote',            label: 'Lote',            width: 'w-28' },
-  { key: 'fecha_caducidad', label: 'Caducidad',       width: 'w-32', type: 'date' },
-  { key: 'centro_origen',   label: 'Centro Orig. *',  width: 'w-24' },
-  { key: 'almacen_origen',  label: 'Alm. Orig.',      width: 'w-20' },
-  { key: 'centro_destino',  label: 'Centro Dest. *',  width: 'w-24' },
-  { key: 'almacen_destino', label: 'Alm. Dest.',      width: 'w-20' },
-  { key: 'comentarios',     label: 'Comentarios',     width: 'w-48' },
+  { key: 'codigo',          label: 'Código *',      width: 'w-28' },
+  { key: 'descripcion',     label: 'Descripción',    width: 'w-48' },
+  { key: 'cantidad',        label: 'Cantidad *',     width: 'w-20', type: 'number' },
+  { key: 'um',              label: 'UM',             width: 'w-16' },
+  { key: 'lote',            label: 'Lote',           width: 'w-28' },
+  { key: 'fecha_caducidad', label: 'Caducidad',      width: 'w-32', type: 'date' },
+  { key: 'centro_origen',   label: 'Centro Orig. *', width: 'w-24' },
+  { key: 'almacen_origen',  label: 'Alm. Orig.',     width: 'w-20' },
+  { key: 'centro_destino',  label: 'Centro Dest. *', width: 'w-24' },
+  { key: 'almacen_destino', label: 'Alm. Dest.',     width: 'w-20' },
+  { key: 'comentarios',     label: 'Comentarios',    width: 'w-48' },
 ]
 
-// Busca cliente opcional
 async function findClient(search: string): Promise<{ id: string; solicitante: string } | null> {
   if (!search.trim()) return null
   const { data } = await supabase.from('crm_clients')
@@ -65,45 +64,32 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
   const [saving, setSaving] = useState(false)
   const pasteRef = useRef<HTMLTextAreaElement>(null)
 
-  const updateRow = (i: number, key: keyof CedisRow, val: string) => {
+  const updateRow = (i: number, key: keyof CedisRow, val: string) =>
     setRows(prev => prev.map((r, j) => j === i ? { ...r, [key]: val } : r))
-  }
 
   const addRow = () => setRows(prev => [...prev, emptyRow()])
   const removeRow = (i: number) => setRows(prev => prev.filter((_, j) => j !== i))
 
-  // Pegar desde Excel
   const parsePaste = (text: string) => {
     const lines = text.trim().split('\n').filter(Boolean)
     if (!lines.length) return
-
-    // Detectar si la primera fila es header
     const firstRow = lines[0].split('\t')
     const hasHeader = isNaN(parseFloat(firstRow[0])) && firstRow[0].length < 20
-
     const dataLines = hasHeader ? lines.slice(1) : lines
     const parsed: CedisRow[] = dataLines.map(line => {
       const cells = line.split('\t').map(c => c.trim())
-      // Intentar mapear por posición: código, desc, cant, um, lote, cad, c_orig, a_orig, c_dest, a_dest, comentarios
       return {
-        codigo:          cells[0] ?? '',
-        descripcion:     cells[1] ?? '',
-        cantidad:        cells[2] ?? '',
-        um:              cells[3] ?? '',
-        lote:            cells[4] ?? '',
-        fecha_caducidad: cells[5] ?? '',
-        centro_origen:   cells[6] ?? '',
-        almacen_origen:  cells[7] ?? '',
-        centro_destino:  cells[8] ?? '',
-        almacen_destino: cells[9] ?? '',
-        comentarios:     cells[10] ?? '',
+        codigo: cells[0] ?? '', descripcion: cells[1] ?? '',
+        cantidad: cells[2] ?? '', um: cells[3] ?? '',
+        lote: cells[4] ?? '', fecha_caducidad: cells[5] ?? '',
+        centro_origen: cells[6] ?? '', almacen_origen: cells[7] ?? '',
+        centro_destino: cells[8] ?? '', almacen_destino: cells[9] ?? '',
+        comentarios: cells[10] ?? '',
       }
     }).filter(r => r.codigo)
-
     if (parsed.length > 0) {
-      setRows(parsed)
-      setMode('tabla')
-      toast.success(`${parsed.length} material(es) importados del portapapeles`)
+      setRows(parsed); setMode('tabla')
+      toast.success(`${parsed.length} material(es) importados`)
     } else {
       toast.error('No se detectaron materiales. Verifica el formato.')
     }
@@ -129,7 +115,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Crear o buscar pedido de referencia
+    // Crear o buscar pedido de referencia (solo si hay cliente)
     let orderId: string | null = null
     if (resolvedClientId) {
       const pedNum = pedidoRef || `CEDIS-MANUAL-${Date.now()}`
@@ -149,25 +135,32 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
 
     let created = 0
     for (const r of valid) {
-      const { data: req } = await supabase.from('crm_cedis_requests').insert({
-        order_id:          orderId,
-        fecha_solicitud:   new Date().toISOString().split('T')[0],
-        centro_origen:     r.centro_origen,
-        almacen_origen:    r.almacen_origen || null,
-        centro_destino:    r.centro_destino,
-        almacen_destino:   r.almacen_destino || null,
-        codigo:            r.codigo,
-        descripcion:       r.descripcion || null,
-        cantidad:          parseFloat(r.cantidad),
-        um:                r.um || null,
-        lote:              r.lote || null,
-        fecha_caducidad:   r.fecha_caducidad || null,
-        comentarios:       r.comentarios || (pedidoRef ? `Pedido ref: ${pedidoRef}` : 'Solicitud manual'),
-        cantidad_recibida: 0,
+      const { data: req, error: reqError } = await supabase.from('crm_cedis_requests').insert({
+        order_id:           orderId,
+        fecha_solicitud:    new Date().toISOString().split('T')[0],
+        centro_origen:      r.centro_origen,
+        almacen_origen:     r.almacen_origen || null,
+        centro_destino:     r.centro_destino,
+        almacen_destino:    r.almacen_destino || null,
+        codigo:             r.codigo,
+        descripcion:        r.descripcion || null,
+        cantidad:           parseFloat(r.cantidad),
+        um:                 r.um || null,
+        lote:               r.lote || null,
+        fecha_caducidad:    r.fecha_caducidad || null,
+        comentarios:        r.comentarios || (pedidoRef ? `Pedido ref: ${pedidoRef}` : 'Solicitud manual'),
+        cantidad_recibida:  0,
         cantidad_pendiente: parseFloat(r.cantidad),
-        estatus:           'solicitado',
-        created_by:        user?.id,
+        estatus:            'solicitado',
+        created_by:         user?.id,
       }).select('id').single()
+
+      if (reqError) {
+        console.error('Error CEDIS:', reqError)
+        toast.error('Error: ' + reqError.message)
+        setSaving(false)
+        return
+      }
 
       if (req) {
         await supabase.from('crm_cedis_history').insert({
@@ -186,13 +179,10 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-start justify-center pt-10 px-4">
       <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-6xl max-h-screen overflow-y-auto">
-        {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div>
             <h2 className="text-lg font-bold text-gray-800">Nueva solicitud CEDIS</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Sin pedido registrado — solicitud manual de traslado entre centros
-            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Solicitud manual de traslado entre centros</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
@@ -214,9 +204,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
                   Buscar
                 </button>
               </div>
-              {clientName && (
-                <p className="text-xs text-teal-600 font-medium mt-1">✓ {clientName}</p>
-              )}
+              {clientName && <p className="text-xs text-teal-600 font-medium mt-1">✓ {clientName}</p>}
             </div>
             <div>
               <label className="text-xs text-gray-500 block mb-1">Referencia / Pedido (opcional)</label>
@@ -227,7 +215,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
             </div>
             <div className="flex items-end">
               <p className="text-xs text-gray-400">
-                Si no hay cliente ni pedido, la solicitud se registra como manual y se puede vincular después.
+                Si no hay cliente ni pedido, la solicitud se registra como manual.
               </p>
             </div>
           </div>
@@ -244,31 +232,24 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
                 📋 Pegar desde Excel
               </button>
             </div>
-            {rows.length > 0 && mode === 'tabla' && (
-              <span className="text-xs text-gray-400">{rows.length} material(es)</span>
-            )}
+            {mode === 'tabla' && <span className="text-xs text-gray-400">{rows.length} material(es)</span>}
           </div>
 
-          {/* Modo: Pegar desde Excel */}
+          {/* Modo pegar */}
           {mode === 'pegar' && (
             <div className="mb-4">
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3">
-                <p className="text-sm font-semibold text-blue-700 mb-1">Formato esperado (columnas en orden):</p>
+                <p className="text-sm font-semibold text-blue-700 mb-1">Formato esperado:</p>
                 <p className="text-xs text-blue-600 font-mono">
                   Código | Descripción | Cantidad | UM | Lote | Caducidad | Centro Origen | Alm. Origen | Centro Destino | Alm. Destino | Comentarios
                 </p>
-                <p className="text-xs text-blue-500 mt-1">
-                  Copia las filas desde Excel y pégalas aquí con Ctrl+V. La primera fila puede ser encabezado o datos.
-                </p>
               </div>
-              <textarea
-                ref={pasteRef}
+              <textarea ref={pasteRef}
                 className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 text-sm outline-none focus:border-teal-400 h-40 resize-none font-mono"
                 placeholder="Pega aquí tus datos desde Excel (Ctrl+V)..."
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
-                onPaste={handlePasteEvent}
-              />
+                onPaste={handlePasteEvent} />
               {pasteText && (
                 <button onClick={() => parsePaste(pasteText)}
                   className="mt-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
@@ -278,7 +259,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
             </div>
           )}
 
-          {/* Modo: Tabla */}
+          {/* Modo tabla */}
           {mode === 'tabla' && (
             <div className="overflow-x-auto mb-4">
               <table className="w-full text-xs border-collapse" style={{ minWidth: 'max-content' }}>
@@ -297,8 +278,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
                     <tr key={i} className="hover:bg-gray-50">
                       {COLS.map(c => (
                         <td key={c.key} className="border border-gray-200 p-0">
-                          <input
-                            type={c.type ?? 'text'}
+                          <input type={c.type ?? 'text'}
                             className={`${c.width} w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent`}
                             value={row[c.key]}
                             onChange={e => updateRow(i, c.key, e.target.value)}
@@ -306,8 +286,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
                               if (e.key === 'Tab' && i === rows.length - 1 && c.key === 'comentarios') {
                                 e.preventDefault(); addRow()
                               }
-                            }}
-                          />
+                            }} />
                         </td>
                       ))}
                       <td className="border border-gray-200 text-center">
@@ -320,8 +299,7 @@ export default function CedisRequestForm({ onClose, onSaved, clientId }: Props) 
                   ))}
                 </tbody>
               </table>
-              <button onClick={addRow}
-                className="mt-2 text-xs text-teal-600 hover:text-teal-700 font-medium">
+              <button onClick={addRow} className="mt-2 text-xs text-teal-600 hover:text-teal-700 font-medium">
                 + Agregar fila
               </button>
             </div>
