@@ -198,20 +198,30 @@ export default function CrmSuggestionsImportPage() {
       if (type === 'suggestions' && incomingKeys.size > 0) {
         setProgress(p => ({ ...p, [type]: 'Detectando pedidos cerrados...' }))
 
+        // Obtener IDs con offer items rechazados para conservarlos
         const { data: rejectedItems } = await supabase
           .from('crm_offer_items').select('source_id').eq('estatus', 'rechazado')
-        const rejectedSourceIds = new Set(rejectedItems?.map(r => r.source_id).filter(Boolean) ?? [])
+        const rejectedSourceIds = new Set(
+          rejectedItems?.map(r => r.source_id).filter(Boolean) ?? []
+        )
 
-        let allExisting: any[] = []
+        // Eliminar todos excepto rechazados, en lotes
         let page = 0
         while (true) {
           const { data: chunk } = await supabase.from('crm_suggestions')
-            .select('id, pedido, material_solicitado, destinatario')
-            .eq('created_by', user?.id).range(page * 500, (page + 1) * 500 - 1)
+            .select('id').eq('created_by', user?.id)
+            .limit(500).range(page * 500, (page + 1) * 500 - 1)
           if (!chunk || chunk.length === 0) break
-          allExisting = [...allExisting, ...chunk]
+          const toDelete = chunk.filter(r => !rejectedSourceIds.has(r.id)).map(r => r.id)
+          if (toDelete.length > 0) {
+            await supabase.from('crm_suggestions').delete().in('id', toDelete)
+            deleted += toDelete.length
+          }
+          if (chunk.length < 500) break
           page++
+          setProgress(p => ({ ...p, [type]: `Eliminando anteriores... ${deleted}` }))
         }
+      }
 
         const toDelete = allExisting.filter(e => {
           if (!e.pedido) return false // nunca borrar registros sin pedido
@@ -248,13 +258,9 @@ export default function CrmSuggestionsImportPage() {
       for (let i = 0; i < inserts.length; i += BATCH) {
         setProgress(p => ({ ...p, [type]: `Insertando... ${Math.min(i+BATCH, inserts.length)} / ${inserts.length}` }))
         if (type === 'suggestions') {
-          const { error } = await supabase.from('crm_suggestions').upsert(
-            inserts.slice(i, i + BATCH),
-            { onConflict: 'pedido,material_solicitado,destinatario,created_by', ignoreDuplicates: false }
-          )
-          if (error) {
-            await supabase.from('crm_suggestions').insert(inserts.slice(i, i + BATCH))
-          }
+          const { error } = await supabase.from('crm_suggestions')
+            .insert(inserts.slice(i, i + BATCH))
+          if (error) { toast.error(error.message); setLoading(null); return }
         } else {
           const { error } = await supabase.from('crm_consumption').insert(inserts.slice(i, i + BATCH))
           if (error) { toast.error(error.message); setLoading(null); return }
