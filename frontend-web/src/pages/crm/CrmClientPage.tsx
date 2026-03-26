@@ -211,6 +211,10 @@ export default function CrmClientPage() {
               className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
               + Oferta manual
             </button>
+            <Link to={`/crm/${id}/venta`}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
+              💰 Ir a venta
+            </Link>
             <Link to={`/crm/${id}/followup/new`}
               className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
               + Seguimiento

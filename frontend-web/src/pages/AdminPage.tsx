@@ -69,7 +69,7 @@ const readRows = async (file: File): Promise<any[]> => {
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
-type Section = 'clientes' | 'sugerencias' | 'consumo' | 'catalogo'
+type Section = 'clientes' | 'sugerencias' | 'consumo' | 'precios' | 'catalogo'
 
 export default function AdminPage() {
   const nav = useNavigate()
@@ -82,7 +82,7 @@ export default function AdminPage() {
   const refSugerencias = useRef<HTMLInputElement>(null)
   const refConsumo     = useRef<HTMLInputElement>(null)
   const refCatalogo    = useRef<HTMLInputElement>(null)
-
+  const refPrecios = useRef<HTMLInputElement>(null)
   // Resultados
   const [results, setResults] = useState<Record<Section, string | null>>({
     clientes: null, sugerencias: null, consumo: null, catalogo: null
@@ -385,6 +385,44 @@ export default function AdminPage() {
     setLoading(false); setProgress('')
   }
 
+  // ── PRECIOS ──────────────────────────────────────────────────────────────────
+  const handlePrecios = async (file: File) => {
+    setLoading(true); setProgress('Leyendo archivo...')
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      if (!rows.length) { toast.error('Archivo vacío'); setLoading(false); return }
+
+      const { data: { user } } = await supabase.auth.getUser()
+      const colP = (r: any, ...keys: string[]) => {
+        for (const k of keys) {
+          const found = Object.keys(r).find(rk => rk.trim() === k.trim())
+          if (found !== undefined && r[found] !== '') return String(r[found]).trim()
+        }
+        return ''
+      }
+
+      const inserts = rows.map(r => ({
+        material:        colP(r,'Material','material'),
+        descripcion:     colP(r,'Descripcion','Descripción','descripcion') || null,
+        precio_oferta:   parseFloat(colP(r,'Precio oferta','precio_oferta').replace(/[$,]/g,'')) || null,
+        condicion:       colP(r,'Condicion','Condición','condicion') || null,
+        oferta_adicional: colP(r,'Oferta adicional','oferta_adicional') || null,
+        created_by:      user?.id,
+      })).filter(r => r.material)
+
+      const { error } = await supabase.from('crm_prices')
+        .upsert(inserts, { onConflict: 'material,created_by', ignoreDuplicates: false })
+      if (error) { toast.error(error.message); setLoading(false); return }
+
+      setResult('precios', `✅ ${inserts.length} precios cargados`)
+      toast.success(`${inserts.length} precios actualizados`)
+    } catch (e: any) { toast.error('Error: ' + e?.message) }
+    setLoading(false); setProgress('')
+  }
+
   // ── CATÁLOGO ─────────────────────────────────────────────────────────────────
   const handleCatalogo = async (file: File) => {
     setLoading(true); setProgress('Leyendo archivo...')
@@ -445,6 +483,7 @@ export default function AdminPage() {
     { key: 'clientes' as Section,    icon: '👥', label: 'Clientes',         desc: 'Importar y actualizar base de clientes' },
     { key: 'sugerencias' as Section, icon: '📋', label: 'Sugerencias SAP',  desc: 'Archivo "Todas las sugerencias"' },
     { key: 'consumo' as Section,     icon: '📊', label: 'Reporte Consumo',  desc: 'Archivo "Sug Reporte Consumo"' },
+    { key: 'precios' as Section,     icon: '💲', label: 'Precios',          desc: 'Precios de oferta por material' },
     { key: 'catalogo' as Section,    icon: '🗂️', label: 'Catálogo',         desc: 'Materiales con precios y presentaciones' },
   ]
 
@@ -542,6 +581,27 @@ export default function AdminPage() {
               onChange={e => { const f = e.target.files?.[0]; if (f) handleConsumo(f); if (refConsumo.current) refConsumo.current.value = '' }} />
           </div>
         )}
+
+        {/* Precios */}
+        {activeSection === 'precios' && (
+          <div>
+            <h2 className="font-semibold text-gray-800 mb-1">Precios de oferta</h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Precios que se pre-llenan automáticamente al generar una oferta desde la página de venta.
+              Se puede subir archivo o capturar manualmente.
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
+              <strong>Columnas del archivo:</strong> Material | Descripcion | Precio oferta | Condicion | Oferta adicional
+            </div>
+            <button onClick={() => refPrecios.current?.click()} disabled={loading}
+              className="bg-teal-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
+              {loading ? 'Procesando...' : 'Subir archivo .xlsx'}
+            </button>
+            <input ref={refPrecios} type="file" className="hidden" accept=".xlsx,.xls"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handlePrecios(f); if (refPrecios.current) refPrecios.current.value = '' }} />
+          </div>
+        )}
+
 
         {/* Catálogo */}
         {activeSection === 'catalogo' && (
