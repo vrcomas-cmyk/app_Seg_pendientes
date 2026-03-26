@@ -161,7 +161,7 @@ export default function CrmVentaPage() {
 
       // Precios
       const mats = [...new Set([
-        ...(sug ?? []).map(s => s.material_sugerido ?? s.material_solicitado),
+        ...(sugRes.data ?? []).map(s => s.material_sugerido ?? s.material_solicitado),
         ...(con ?? []).map(c => c.material_sugerido ?? c.material),
       ].filter(Boolean))]
 
