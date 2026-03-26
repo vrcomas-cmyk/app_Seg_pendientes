@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import CedisRequestForm from '../../components/CedisRequestForm'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -69,6 +70,7 @@ export default function CrmMaterialsTrackingPage() {
   const [mode, setMode] = useState<'consolidado' | 'detalle'>('consolidado')
   const [showHistory, setShowHistory] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showNewForm, setShowNewForm] = useState(false)
   const [requests, setRequests] = useState<CedisRequest[]>([])
   const [selectedGroup, setSelectedGroup] = useState<ConsolidatedGroup | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
@@ -213,6 +215,7 @@ export default function CrmMaterialsTrackingPage() {
   const doneCount    = requests.filter(r => DONE_ESTATUS.includes(r.estatus)).length
 
   return (
+    <>
     <div className="max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
@@ -231,6 +234,10 @@ export default function CrmMaterialsTrackingPage() {
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 w-56"
             placeholder="Buscar material, pedido, cliente..."
             value={searchFilter} onChange={e => setSearchFilter(e.target.value)} />
+          <button onClick={() => setShowNewForm(true)}
+            className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+            + Nueva solicitud CEDIS
+          </button>
           <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
             <input type="checkbox" checked={showHistory}
               onChange={e => setShowHistory(e.target.checked)} />
@@ -518,5 +525,14 @@ export default function CrmMaterialsTrackingPage() {
         )}
       </div>
     </div>
+
+    {/* Modal nueva solicitud CEDIS */}
+    {showNewForm && (
+      <CedisRequestForm
+        onClose={() => setShowNewForm(false)}
+        onSaved={() => { setShowNewForm(false); load() }}
+      />
+    )}
+  </>
   )
 }
