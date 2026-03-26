@@ -21,7 +21,9 @@ function parseDate(v: any): string | null {
 
 function parseNum(v: any): number | null {
   if (v === undefined || v === null || v === '') return null
-  const n = parseFloat(String(v).replace(/[$,\s]/g,'').replace(/,/g,'.'))
+  const s = String(v).trim()
+  if (s === '-' || s === 'nan' || s === 'NaN') return null
+  const n = parseFloat(s.replace(/[$,\s]/g,'').replace(/,/g,'.'))
   return isNaN(n) ? null : n
 }
 
@@ -50,7 +52,6 @@ export default function CrmSuggestionsImportPage() {
       const text = await readFileAsText(file)
       return parseCSVText(text)
     }
-    // Excel — solo para archivos pequeños/medianos
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: 'array', cellDates: false, dense: true })
     const ws = wb.Sheets[wb.SheetNames[0]]
@@ -63,42 +64,33 @@ export default function CrmSuggestionsImportPage() {
     try {
       const rows = await readRows(file)
       if (!rows.length) { toast.error('El archivo está vacío'); setLoading(null); return }
-      // Debug: mostrar primeras columnas detectadas
-      const sampleKeys = Object.keys(rows[0] ?? {}).slice(0, 5)
-      console.log('Columnas detectadas:', sampleKeys)
-      setProgress(p => ({ ...p, [type]: `Columnas: ${sampleKeys.join(' | ')}` }))
-      await new Promise(r => setTimeout(r, 2000)) // pausa para ver el mensaje
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
       const { data: { user } } = await supabase.auth.getUser()
       const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
-      // Buscar clientes para vincular
       const { data: clients } = await supabase.from('crm_clients')
         .select('id, solicitante').eq('created_by', user?.id)
       const clientMap: Record<string, string> = {}
       clients?.forEach(c => { clientMap[c.solicitante] = c.id })
 
       let inserts: any[] = []
-      const incomingKeys: Set<string> = new Set()
 
       if (type === 'suggestions') {
         inserts = rows.map(r => {
-          const pedido = col(r,'Pedido') || null
-          const matSol = col(r,'Material solicitado') || null
-          const dest   = col(r,'Destinatario') || null
-          if (pedido) incomingKeys.add(`${pedido}__${matSol}__${dest}`)
           const sol = col(r,'Solicitante') || null
           return {
             gpo_cliente:            col(r,'Gpo. Cte.','Gpo.Cte') || null,
             fecha:                  parseDate(col(r,'Fecha')),
-            pedido, gpo_vendedor:   col(r,'Gpo.Vdor.','Gpo. Vdor.') || null,
-            solicitante: sol, destinatario: dest,
+            pedido:                 col(r,'Pedido') || null,
+            gpo_vendedor:           col(r,'Gpo.Vdor.','Gpo. Vdor.') || null,
+            solicitante:            sol,
+            destinatario:           col(r,'Destinatario') || null,
             razon_social:           col(r,'Razón Social','Razon Social') || null,
             centro_pedido:          col(r,'Centro pedido') || null,
             almacen:                col(r,'Almacén','Almacen') || null,
-            material_solicitado:    matSol,
+            material_solicitado:    col(r,'Material solicitado') || null,
             material_base:          col(r,'Material base') || null,
             descripcion_solicitada: col(r,'Descripción solicitada','Descripcion solicitada') || null,
             cantidad_pedido:        parseNum(col(r,'Cantidad pedido')),
@@ -129,7 +121,7 @@ export default function CrmSuggestionsImportPage() {
             inv_1004: parseNum(col(r,'Inv 1004')), inv_1017: parseNum(col(r,'Inv 1017')),
             inv_1018: parseNum(col(r,'Inv 1018')), inv_1022: parseNum(col(r,'Inv 1022')),
             inv_1036: parseNum(col(r,'Inv 1036')), bloqueado: parseNum(col(r,'Bloqueado')),
-            client_id: sol ? (clientMap[sol] ?? null) : null,
+            client_id:  sol ? (clientMap[sol] ?? null) : null,
             created_by: user?.id,
           }
         }).filter(r => r.solicitante || r.pedido)
@@ -138,14 +130,14 @@ export default function CrmSuggestionsImportPage() {
         inserts = rows.map(r => {
           const sol = col(r,'Solicitante') || null
           return {
-            centro: col(r,'Centro') || null,
-            gpo_cliente: col(r,'Grp. Cliente','Gpo. Cliente') || null,
-            gpo_vendedor: col(r,'Gpo. Vdor.','Gpo.Vdor.') || null,
-            solicitante: sol,
-            destinatario: col(r,'Destinatario') || null,
-            razon_social: col(r,'Razón Social','Razon Social') || null,
-            material: col(r,'Material') || null,
-            texto_material: col(r,'Texto Material') || null,
+            centro:                    col(r,'Centro') || null,
+            gpo_cliente:               col(r,'Grp. Cliente','Gpo. Cliente') || null,
+            gpo_vendedor:              col(r,'Gpo. Vdor.','Gpo.Vdor.') || null,
+            solicitante:               sol,
+            destinatario:              col(r,'Destinatario') || null,
+            razon_social:              col(r,'Razón Social','Razon Social') || null,
+            material:                  col(r,'Material') || null,
+            texto_material:            col(r,'Texto Material') || null,
             ultima_compra_cliente:     parseDate(col(r,'Ultima_compra_cliente','Ultima compra cliente')),
             ultima_facturacion_dest:   parseDate(col(r,'Ultima_facturacion_destinatario')),
             consumo_promedio_mensual:  parseNum(col(r,'Consumo_promedio_mensual','Consumo promedio mensual')),
@@ -193,24 +185,21 @@ export default function CrmSuggestionsImportPage() {
         }).filter(r => r.solicitante || r.material)
       }
 
-      // Para sugerencias: eliminar registros que ya no están en el archivo
+      // Eliminar registros anteriores conservando los rechazados
       let deleted = 0
-      if (type === 'suggestions' && incomingKeys.size > 0) {
-        setProgress(p => ({ ...p, [type]: 'Detectando pedidos cerrados...' }))
+      setProgress(p => ({ ...p, [type]: 'Eliminando registros anteriores...' }))
 
-        // Obtener IDs con offer items rechazados para conservarlos
+      if (type === 'suggestions') {
         const { data: rejectedItems } = await supabase
           .from('crm_offer_items').select('source_id').eq('estatus', 'rechazado')
         const rejectedSourceIds = new Set(
           rejectedItems?.map(r => r.source_id).filter(Boolean) ?? []
         )
-
-        // Eliminar todos excepto rechazados, en lotes
         let page = 0
         while (true) {
           const { data: chunk } = await supabase.from('crm_suggestions')
             .select('id').eq('created_by', user?.id)
-            .limit(500).range(page * 500, (page + 1) * 500 - 1)
+            .range(page * 500, (page + 1) * 500 - 1)
           if (!chunk || chunk.length === 0) break
           const toDelete = chunk.filter(r => !rejectedSourceIds.has(r.id)).map(r => r.id)
           if (toDelete.length > 0) {
@@ -221,26 +210,7 @@ export default function CrmSuggestionsImportPage() {
           page++
           setProgress(p => ({ ...p, [type]: `Eliminando anteriores... ${deleted}` }))
         }
-      }
-
-        const toDelete = allExisting.filter(e => {
-          if (!e.pedido) return false // nunca borrar registros sin pedido
-          const key = `${e.pedido}__${e.material_solicitado}__${e.destinatario}`
-          return !incomingKeys.has(key) && !rejectedSourceIds.has(e.id)
-        })
-
-        if (toDelete.length > 0) {
-          setProgress(p => ({ ...p, [type]: `Eliminando ${toDelete.length} pedidos cerrados...` }))
-          const delIds = toDelete.map(e => e.id)
-          for (let i = 0; i < delIds.length; i += 500) {
-            await supabase.from('crm_suggestions').delete()
-              .in('id', delIds.slice(i, i + 500))
-          }
-          deleted = toDelete.length
-        }
-      } else if (type === 'consumption') {
-        // Para consumo: reemplazar todo (delete + insert)
-        setProgress(p => ({ ...p, [type]: 'Reemplazando registros anteriores...' }))
+      } else {
         let page = 0
         while (true) {
           const { data: chunk } = await supabase.from('crm_consumption')
@@ -257,20 +227,14 @@ export default function CrmSuggestionsImportPage() {
       let inserted = 0
       for (let i = 0; i < inserts.length; i += BATCH) {
         setProgress(p => ({ ...p, [type]: `Insertando... ${Math.min(i+BATCH, inserts.length)} / ${inserts.length}` }))
-        if (type === 'suggestions') {
-          const { error } = await supabase.from('crm_suggestions')
-            .insert(inserts.slice(i, i + BATCH))
-          if (error) { toast.error(error.message); setLoading(null); return }
-        } else {
-          const { error } = await supabase.from('crm_consumption').insert(inserts.slice(i, i + BATCH))
-          if (error) { toast.error(error.message); setLoading(null); return }
-        }
+        const { error } = await supabase.from(table).insert(inserts.slice(i, i + BATCH))
+        if (error) { toast.error(error.message); setLoading(null); return }
         inserted += Math.min(BATCH, inserts.length - i)
       }
 
       setCounts(c => ({ ...c, [type]: { inserted, deleted } }))
       setProgress(p => ({ ...p, [type]: '' }))
-      toast.success(`${inserted} registros cargados${deleted > 0 ? `, ${deleted} eliminados` : ''}`)
+      toast.success(`${inserted} registros cargados`)
     } catch (e: any) {
       toast.error('Error: ' + (e?.message ?? ''))
       console.error(e)
@@ -291,7 +255,6 @@ export default function CrmSuggestionsImportPage() {
         {counts[type] !== null && (
           <span className="bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full font-medium">
             ✅ {counts[type]!.inserted} registros
-            {counts[type]!.deleted > 0 && ` · ${counts[type]!.deleted} eliminados`}
           </span>
         )}
       </div>
@@ -305,10 +268,13 @@ export default function CrmSuggestionsImportPage() {
         {loading === type ? 'Procesando...' : 'Subir / Actualizar'}
       </button>
       <input ref={inputRef} type="file" className="hidden" accept=".xlsx,.xls,.csv"
-        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f, type); if (inputRef.current) inputRef.current.value = '' }} />
+        onChange={e => {
+          const f = e.target.files?.[0]
+          if (f) handleFile(f, type)
+          if (inputRef.current) inputRef.current.value = ''
+        }} />
       <p className="text-xs text-gray-400 mt-2">
         Para archivos grandes (+50k filas) guarda como <strong>CSV UTF-8</strong> desde Excel.
-        El CSV se procesa mucho más rápido que el .xlsx.
       </p>
     </div>
   )
@@ -321,18 +287,14 @@ export default function CrmSuggestionsImportPage() {
       </button>
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Cargar archivos de sugerencias</h1>
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-        <p className="text-sm text-amber-700 font-medium mb-1">
-          ⚠️ Para "Sug Reporte Consumo" (160k+ filas)
-        </p>
+        <p className="text-sm text-amber-700 font-medium mb-1">⚠️ Para archivos grandes (+50k filas)</p>
         <p className="text-xs text-amber-600">
-          El archivo .xlsx es demasiado grande para procesarse en el navegador.
-          En Excel: <strong>Archivo → Guardar como → CSV UTF-8 (delimitado por comas)</strong>.
-          El CSV del mismo archivo se procesa sin problemas.
+          En Excel: <strong>Archivo → Guardar como → CSV UTF-8</strong>. El CSV se procesa mucho más rápido.
         </p>
       </div>
       <div className="space-y-4">
         <FileCard type="suggestions" title='Archivo 1 — "Todas las sugerencias"'
-          description="Pedidos abiertos en SAP. Elimina automáticamente pedidos cerrados."
+          description="Pedidos abiertos en SAP. Se reemplaza completo al subir."
           inputRef={ref1} />
         <FileCard type="consumption" title='Archivo 2 — "Sug Reporte Consumo"'
           description="Oportunidades por consumo histórico. Para archivos grandes usar CSV."
