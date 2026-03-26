@@ -107,7 +107,12 @@ export default function CrmOffersListPage() {
           <span className="text-gray-300">/</span>
           <h1 className="text-xl font-bold text-gray-800">Seguimiento de ofertas</h1>
         </div>
-        <p className="text-sm text-gray-400">{offers.length} oferta(s) · {totalItems} materiales</p>
+        <p className="text-sm text-gray-400">
+          {offers.filter(o => {
+            const pending = (o.crm_offer_items ?? []).filter((it: any) => !it.aceptado && it.estatus !== 'rechazado')
+            return pending.length > 0 || showClosed
+          }).length} oferta(s) · {totalItems} materiales
+        </p>
       </div>
       <div className="flex items-center gap-3">
         <Link to="/crm/ventas"

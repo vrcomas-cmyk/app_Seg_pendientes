@@ -7,7 +7,7 @@ import ContactsTable from '../../components/ContactsTable'
 import SugFilters from '../../components/SugFilters'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'pedidos' | 'pendientes'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'ventas' | 'pendientes'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -21,6 +21,7 @@ export default function CrmClientPage() {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [consumption, setConsumption] = useState<any[]>([])
   const [offers, setOffers] = useState<any[]>([])
+  const [ventas, setVentas] = useState<any[]>([])
   const [tab, setTab] = useState<Tab>('info')
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<any>({})
@@ -59,6 +60,15 @@ export default function CrmClientPage() {
     .eq('client_id', id)
     .order('created_at', { ascending: false })
   setOffers(offersData ?? [])
+
+  const { data: ventasData } = await supabase
+    .from('crm_offer_items')
+    .select('*, crm_offers!inner(id, tipo, estatus, client_id)')
+    .eq('aceptado', true)
+    .eq('crm_offers.client_id', id)
+    .not('crm_offers.estatus', 'in', '("cancelado")')
+    .order('updated_at', { ascending: false })
+  setVentas(ventasData ?? [])
 
     if (c.data?.solicitante) {
       const solicitante = c.data.solicitante
@@ -172,7 +182,7 @@ export default function CrmClientPage() {
     { key: 'sugerencias',   label: `Sugerencias SAP (${suggestions.length})` },
     { key: 'consumo',       label: `Consumo (${consumption.length})` },
     { key: 'ofertas', label: `Ofertas (${offers.length})` },
-    { key: 'pedidos',       label: `Pedidos (${orders.length})` },
+    { key: 'ventas', label: `Ventas (${ventas.length})` },
     { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
   ]
 
@@ -665,30 +675,74 @@ export default function CrmClientPage() {
         </div>
       )}
 
-      {/* TAB: Pedidos */}
-      {tab === 'pedidos' && (
+      {/* TAB: Ventas */}
+      {tab === 'ventas' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {orders.length === 0 && <p className="text-sm text-gray-400 p-6">Sin pedidos registrados.</p>}
-          {orders.map(o => (
-            <div key={o.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-bold text-gray-800">Pedido: {o.numero_pedido}</p>
-                <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleDateString('es-MX')}</p>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-gray-400 mb-2">
-                <span>{o.crm_order_items?.[0]?.count ?? 0} material(es)</span>
-                <span>{o.crm_cedis_requests?.[0]?.count ?? 0} req. CEDIS</span>
-              </div>
-              {o.comentarios && <p className="text-xs text-gray-500 mb-2">{o.comentarios}</p>}
-              <CrmOrderStatusBar order={o} onRefresh={load} />
-              <div className="mt-2">
-                <Link to={`/crm/${id}/order/${o.id}/cedis`}
-                  className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700">
-                  Ver / Crear requerimiento CEDIS
-                </Link>
-              </div>
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Ventas</h2>
+            <Link to="/crm/ventas" className="text-xs text-teal-600 hover:underline">
+              Ver todas las ventas →
+            </Link>
+          </div>
+          {ventas.length === 0 && (
+            <p className="text-sm text-gray-400 p-6">Sin ventas registradas para este cliente.</p>
+          )}
+          {ventas.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Material','Descripción','Pedido','Cant.','Precio','UM','Lote/Cad','Folio Salida','Factura','Estatus'].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ventas.map(v => {
+                    const lotes = typeof v.lotes === 'string' ? JSON.parse(v.lotes) : (v.lotes ?? [])
+                    const lote = lotes[0] ?? {}
+                    const ESTATUS_COLOR: Record<string,string> = {
+                      aceptado: 'bg-green-100 text-green-700',
+                      asignado_pedido: 'bg-blue-100 text-blue-700',
+                      solicitud_cedis: 'bg-yellow-100 text-yellow-700',
+                      en_transito: 'bg-orange-100 text-orange-700',
+                      recibido_cedis: 'bg-teal-100 text-teal-700',
+                      disponible: 'bg-indigo-100 text-indigo-700',
+                      surtido: 'bg-cyan-100 text-cyan-700',
+                      facturado: 'bg-green-200 text-green-800',
+                      entregado: 'bg-emerald-200 text-emerald-800',
+                    }
+                    return (
+                      <tr key={v.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{v.material}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{v.descripcion}</td>
+                        <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{v.numero_pedido ?? '—'}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{v.cantidad_ofertada ?? '—'}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">
+                          {v.precio_oferta ? `$${Number(v.precio_oferta).toLocaleString('es-MX')}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{v.um ?? '—'}</td>
+                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                          {lote.lote ? `${lote.lote}${lote.fecha_caducidad ? ` / ${lote.fecha_caducidad}` : ''}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{v.folio_entrega_salida ?? '—'}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {v.numero_factura
+                            ? <span className="text-green-700 font-medium">{v.numero_factura}</span>
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full font-medium text-xs ${ESTATUS_COLOR[v.estatus] ?? 'bg-gray-100 text-gray-500'}`}>
+                            {v.estatus?.replace(/_/g,' ')}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </div>
       )}
 
