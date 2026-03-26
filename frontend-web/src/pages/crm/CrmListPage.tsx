@@ -127,6 +127,10 @@ export default function CrmListPage() {
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Materiales en proceso
           </Link>
+          <Link to="/crm/ventas"
+            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
+            💰 Ventas
+          </Link>
           <Link to="/crm/new"
             className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
             + Cliente

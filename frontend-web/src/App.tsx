@@ -17,6 +17,7 @@ import CrmNewClientPage from './pages/crm/CrmNewClientPage'
 import CrmSpecialOrdersPage from './pages/crm/CrmSpecialOrdersPage'
 import CrmSuggestionsImportPage from './pages/crm/CrmSuggestionsImportPage'
 import CrmOffersListPage from './pages/crm/CrmOffersListPage'
+import CrmVentasPage from './pages/crm/CrmVentasPage'
 import CrmReportsPage from './pages/crm/CrmReportsPage'
 import CrmMaterialsTrackingPage from './pages/crm/CrmMaterialsTrackingPage'
 import CrmOfferItemsTrackingPage from './pages/crm/CrmOfferItemsTrackingPage'
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="/crm/special-orders" element={<CrmSpecialOrdersPage />} />
         <Route path="/crm/suggestions-import" element={<CrmSuggestionsImportPage />} />
         <Route path="/crm/offers" element={<CrmOffersListPage />} />
+        <Route path="/crm/ventas" element={<CrmVentasPage />} />
         <Route path="/crm/reports" element={<CrmReportsPage />} />
         <Route path="/crm/materials" element={<CrmMaterialsTrackingPage />} />
         <Route path="/crm/items" element={<CrmOfferItemsTrackingPage />} />

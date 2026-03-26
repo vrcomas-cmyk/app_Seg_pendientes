@@ -101,27 +101,33 @@ export default function CrmOffersListPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Link to="/crm" className="text-sm text-gray-400 hover:text-gray-600">← CRM</Link>
-            <span className="text-gray-300">/</span>
-            <h1 className="text-xl font-bold text-gray-800">Seguimiento de ofertas</h1>
-          </div>
-          <p className="text-sm text-gray-400">{offers.length} oferta(s) · {totalItems} materiales</p>
+    <div className="flex justify-between items-center mb-6">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Link to="/crm" className="text-sm text-gray-400 hover:text-gray-600">← CRM</Link>
+          <span className="text-gray-300">/</span>
+          <h1 className="text-xl font-bold text-gray-800">Seguimiento de ofertas</h1>
         </div>
+        <p className="text-sm text-gray-400">{offers.length} oferta(s) · {totalItems} materiales</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <Link to="/crm/ventas"
+          className="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
+          💰 Ver ventas
+        </Link>
         <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
           <input type="checkbox" checked={showClosed}
             onChange={e => setShowClosed(e.target.checked)} />
           Mostrar cerradas y canceladas
         </label>
       </div>
+    </div>
 
       {/* Resumen */}
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
           { label: 'Total materiales', value: totalItems, color: 'border-gray-200' },
-          { label: 'Aceptados',        value: aceptados,  color: 'border-green-200 bg-green-50' },
+          { label: 'Pasaron a ventas', value: aceptados, color: 'border-green-200 bg-green-50' },
           { label: 'En proceso CEDIS', value: enCedis,    color: 'border-yellow-200 bg-yellow-50' },
           { label: 'Facturados',       value: facturados, color: 'border-purple-200 bg-purple-50' },
         ].map(s => (
@@ -202,10 +208,6 @@ export default function CrmOffersListPage() {
                     className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1.5 border border-teal-200 rounded-lg hover:bg-teal-50">
                     Abrir →
                   </Link>
-                  <Link to="/crm/items"
-                    className="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
-                    ← Materiales en proceso
-                  </Link>
                 </div>
               </div>
 
@@ -226,7 +228,7 @@ export default function CrmOffersListPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((it: any) => {
+                      {items.filter((it: any) => !it.aceptado).map((it: any) => {
                         const lotes = typeof it.lotes === 'string'
                           ? JSON.parse(it.lotes) : (it.lotes ?? [])
                         const lote = lotes[0] ?? {}

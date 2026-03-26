@@ -472,15 +472,15 @@ export default function CrmOfferPage() {
                 if (!window.confirm('¿Cerrar esta oferta? Quedará archivada.')) return
                 await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
                 toast.success('Oferta cerrada')
-                nav(`/crm/${clientId}`)
+                nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50">
                 ✅ Cerrar oferta
               </button>
               <button onClick={async () => {
-                if (!window.confirm('¿Cancelar esta oferta? Las sugerencias volverán a aparecer.')) return
+                if (!window.confirm('¿Cancelar esta oferta?')) return
                 await supabase.from('crm_offers').update({ estatus: 'cancelado' }).eq('id', savedOfferId)
-                toast.success('Oferta cancelada — sugerencias restauradas')
-                nav(`/crm/${clientId}`)
+                toast.success('Oferta cancelada')
+                nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-red-300 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">
                 Cancelar oferta
               </button>
