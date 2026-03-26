@@ -118,23 +118,32 @@ export default function CrmVentaPage() {
       const solicitante = c.solicitante
 
       // Cargar aceptados para excluir
-      const { data: accepted } = await supabase.from('crm_accepted_suggestions')
-        .select('numero_pedido, material')
-      const accSet = new Set((accepted ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`))
+      const [acceptedRes, offeredRes, sugRes] = await Promise.all([
+        supabase.from('crm_accepted_suggestions').select('numero_pedido, material'),
+        supabase.from('crm_offered_suggestions').select('source_id'),
+        supabase.from('crm_suggestions')
+          .select('*')
+          .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
+          .order('fecha', { ascending: true }),
+      ])
+
+      const accSet = new Set(
+        (acceptedRes.data ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+      )
       setAcceptedMaterials(accSet)
 
-      // Sugerencias — filtrar rechazadas temporalmente y aceptadas
-      const { data: sug } = await supabase.from('crm_suggestions')
-        .select('*')
-        .or(`solicitante.eq.${solicitante},destinatario.eq.${solicitante}`)
-        .order('fecha', { ascending: true })
+      const offeredIds = new Set(
+        (offeredRes.data ?? []).map((a: any) => a.source_id).filter(Boolean)
+      )
 
-      const filteredSug = (sug ?? []).filter(s => {
-        // Excluir rechazados temporalmente (dentro de los 10 días)
+      const filteredSug = (sugRes.data ?? []).filter(s => {
+        // Rechazado temporalmente
         if (s.rechazado_hasta && s.rechazado_hasta >= today) return false
-        // Excluir ya aceptados en ofertas activas
+        // Ya aceptado en oferta activa → en ventas
         if (accSet.has(`${s.pedido}__${s.material_sugerido}`)) return false
         if (accSet.has(`${s.pedido}__${s.material_solicitado}`)) return false
+        // En negociación activa (oferta abierta)
+        if (offeredIds.has(s.id)) return false
         return true
       })
       setSuggestions(filteredSug)

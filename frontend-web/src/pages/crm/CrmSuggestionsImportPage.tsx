@@ -225,10 +225,15 @@ export default function CrmSuggestionsImportPage() {
       setProgress(p => ({ ...p, [type]: 'Eliminando registros anteriores...' }))
 
       if (type === 'suggestions') {
-        const { data: rejectedItems } = await supabase
-          .from('crm_offer_items').select('source_id').eq('estatus', 'rechazado')
+        const [rejectedRes, offeredRes] = await Promise.all([
+          supabase.from('crm_offer_items').select('source_id').eq('estatus', 'rechazado'),
+          supabase.from('crm_offered_suggestions').select('source_id'),
+        ])
         const rejectedSourceIds = new Set(
-          rejectedItems?.map(r => r.source_id).filter(Boolean) ?? []
+          rejectedRes.data?.map(r => r.source_id).filter(Boolean) ?? []
+        )
+        const offeredSourceIds = new Set(
+          offeredRes.data?.map(r => r.source_id).filter(Boolean) ?? []
         )
         let page = 0
         while (true) {
@@ -236,7 +241,9 @@ export default function CrmSuggestionsImportPage() {
             .select('id').eq('created_by', user?.id)
             .range(page * 500, (page + 1) * 500 - 1)
           if (!chunk || chunk.length === 0) break
-          const toDelete = chunk.filter(r => !rejectedSourceIds.has(r.id)).map(r => r.id)
+          const toDelete = chunk.filter(r =>
+            !rejectedSourceIds.has(r.id) && !offeredSourceIds.has(r.id)
+          ).map(r => r.id)
           if (toDelete.length > 0) {
             await supabase.from('crm_suggestions').delete().in('id', toDelete)
             deleted += toDelete.length

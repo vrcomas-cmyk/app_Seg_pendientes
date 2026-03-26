@@ -83,28 +83,27 @@ export default function CrmClientPage() {
       ])
 
       // Filtrar sugerencias ya aceptadas (mismo pedido + mismo material)
-      const { data: accepted } = await supabase
-        .from('crm_accepted_suggestions').select('numero_pedido, material')
+      const [acceptedRes, rejectedRes, offeredRes] = await Promise.all([
+        supabase.from('crm_accepted_suggestions').select('numero_pedido, material'),
+        supabase.from('crm_rejected_suggestions').select('numero_pedido, material'),
+        supabase.from('crm_offered_suggestions').select('source_id'),
+      ])
       const acceptedSet = new Set(
-        (accepted ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+        (acceptedRes.data ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
       )
-      // También filtrar rechazadas
-      const { data: rejected } = await supabase
-        .from('crm_rejected_suggestions').select('numero_pedido, material')
       const rejectedSet = new Set(
-        (rejected ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+        (rejectedRes.data ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
+      )
+      const offeredIds = new Set(
+        (offeredRes.data ?? []).map((a: any) => a.source_id).filter(Boolean)
       )
       const filteredSug = (sugRaw.data ?? []).filter(s =>
         !acceptedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
         !acceptedSet.has(`${s.pedido}__${s.material_solicitado}`) &&
         !rejectedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
-        !rejectedSet.has(`${s.pedido}__${s.material_solicitado}`)
+        !rejectedSet.has(`${s.pedido}__${s.material_solicitado}`) &&
+        !offeredIds.has(s.id)
       )
-      setSuggestions(filteredSug)
-      setFilteredSugg(filteredSug)
-      setConsumption(con.data ?? [])
-      setFilteredCons(con.data ?? [])
-    }
 
     if (f.data && f.data.length > 0) {
       const taskIds = f.data.map((x: any) => x.task_id).filter(Boolean)
