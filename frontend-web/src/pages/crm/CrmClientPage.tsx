@@ -620,8 +620,10 @@ export default function CrmClientPage() {
           </div>
           {offers.length === 0 && <p className="text-sm text-gray-400 p-6">Sin ofertas registradas.</p>}
           {offers.map(offer => {
-            const items = (offer.crm_offer_items ?? []).filter((it: any) => !it.aceptado)
-            if (items.length === 0 && !['borrador','presentada'].includes(offer.estatus)) return null
+            const allItems = offer.crm_offer_items ?? []
+            const items = allItems.filter((it: any) => !it.aceptado && it.estatus !== 'rechazado')
+            // Ocultar si: todos aceptados/rechazados, o cerrada/cancelada
+            if (items.length === 0) return null
             return (
               <div key={offer.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
                 <div className="flex items-center justify-between mb-2">
