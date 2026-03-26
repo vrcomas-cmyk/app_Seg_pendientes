@@ -20,6 +20,7 @@ import CrmOffersListPage from './pages/crm/CrmOffersListPage'
 import CrmReportsPage from './pages/crm/CrmReportsPage'
 import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CatalogPage from './pages/CatalogPage'
+import AdminPage from './pages/AdminPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/crm/reports" element={<CrmReportsPage />} />
         <Route path="/crm/:clientId/offer/:offerId" element={<CrmOfferPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Route>
     </Routes>
   )

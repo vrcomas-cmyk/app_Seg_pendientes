@@ -109,17 +109,9 @@ export default function CrmListPage() {
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Seguimiento ofertas
           </Link>
-          <Link to="/crm/suggestions-import"
-            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-            Sugerencias / Consumo
-          </Link>
           <Link to="/crm/special-orders"
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Pedidos especiales
-          </Link>
-          <Link to="/crm/import"
-            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-            Cargar Excel
           </Link>
           <Link to="/crm/reports"
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
