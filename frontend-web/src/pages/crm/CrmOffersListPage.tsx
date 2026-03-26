@@ -202,6 +202,10 @@ export default function CrmOffersListPage() {
                     className="text-xs text-teal-600 hover:text-teal-700 font-medium px-3 py-1.5 border border-teal-200 rounded-lg hover:bg-teal-50">
                     Abrir →
                   </Link>
+                  <Link to="/crm/items"
+                    className="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
+                    ← Materiales en proceso
+                  </Link>
                 </div>
               </div>
 
