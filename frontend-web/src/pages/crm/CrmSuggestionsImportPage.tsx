@@ -214,6 +214,7 @@ export default function CrmSuggestionsImportPage() {
         }
 
         const toDelete = allExisting.filter(e => {
+          if (!e.pedido) return false // nunca borrar registros sin pedido
           const key = `${e.pedido}__${e.material_solicitado}__${e.destinatario}`
           return !incomingKeys.has(key) && !rejectedSourceIds.has(e.id)
         })
