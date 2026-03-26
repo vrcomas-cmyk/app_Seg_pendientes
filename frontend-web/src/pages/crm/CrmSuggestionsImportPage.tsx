@@ -126,30 +126,37 @@ export default function CrmSuggestionsImportPage() {
           }
         }).filter(r => r.solicitante || r.pedido)
 
-      // Deduplicar: mismo pedido+material_solicitado+destinatario → quedarse con el que tenga más datos
+      // Normalizar valor para comparación: -, vacío y 0 son equivalentes para dedup
+      const normVal = (v: any): string => {
+        if (v === null || v === undefined || v === '' || v === '-') return ''
+        const n = parseFloat(String(v))
+        if (!isNaN(n)) return String(Math.round(n * 10000) / 10000)
+        return String(v).trim()
+      }
+
       const dedupMap = new Map<string, any>()
       for (const row of inserts) {
         const key = [
-          row.pedido,
-          row.material_solicitado,
-          row.destinatario,
+          row.pedido ?? '',
+          row.material_solicitado ?? '',
+          row.destinatario ?? '',
           row.fuente ?? '',
           row.material_sugerido ?? '',
           row.centro_sugerido ?? '',
           row.almacen_sugerido ?? '',
           row.lote ?? '',
           row.fecha_caducidad ?? '',
-          String(row.disponible ?? ''),
-          String(row.cantidad_ofertar ?? ''),
+          normVal(row.disponible),
+          normVal(row.cantidad_ofertar),
         ].join('__')
+
         if (!dedupMap.has(key)) {
           dedupMap.set(key, row)
         } else {
-          // Preferir el que tenga más campos numéricos con valor
+          // Preferir la fila con más campos con valor
           const existing = dedupMap.get(key)
-          const existingScore = Object.values(existing).filter(v => v !== null && v !== '').length
-          const newScore = Object.values(row).filter(v => v !== null && v !== '').length
-          if (newScore > existingScore) dedupMap.set(key, row)
+          const score = (r: any) => Object.values(r).filter(v => v !== null && v !== '' && v !== '-').length
+          if (score(row) > score(existing)) dedupMap.set(key, row)
         }
       }
       inserts = Array.from(dedupMap.values())
