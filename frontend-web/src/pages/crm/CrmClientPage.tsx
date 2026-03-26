@@ -87,18 +87,29 @@ export default function CrmClientPage() {
       const rejectedSet = new Set(
         (rejectedRes.data ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
       )
-      const offeredIds = new Set(
-        (offeredRes.data ?? []).map((a: any) => a.source_id).filter(Boolean)
+      const offeredKeys = new Set(
+        (offeredRes.data ?? []).flatMap((a: any) => [
+          `${a.pedido}__${a.material_sugerido}`,
+          `${a.pedido}__${a.material_solicitado}`,
+        ].filter(k => k !== '__' && !k.startsWith('__') && !k.endsWith('__')))
       )
       const today = new Date().toISOString().split('T')[0]
-      const filteredSug = (sugRaw.data ?? []).filter(s =>
-        !acceptedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
-        !acceptedSet.has(`${s.pedido}__${s.material_solicitado}`) &&
-        !rejectedSet.has(`${s.pedido}__${s.material_sugerido}`) &&
-        !rejectedSet.has(`${s.pedido}__${s.material_solicitado}`) &&
-        !offeredIds.has(s.id) &&
-        (!s.rechazado_hasta || s.rechazado_hasta < today)
-      )
+      const filteredSug = (sugRaw.data ?? []).filter(s => {
+        // Fuente vacía → siempre visible
+        if (!s.fuente || s.fuente.trim() === '') return true
+        // Rechazado temporalmente → ocultar
+        if (s.rechazado_hasta && s.rechazado_hasta >= today) return false
+        // Aceptado en venta activa → ocultar
+        if (acceptedSet.has(`${s.pedido}__${s.material_sugerido}`)) return false
+        if (acceptedSet.has(`${s.pedido}__${s.material_solicitado}`)) return false
+        // Rechazado permanente (vista) → ocultar
+        if (rejectedSet.has(`${s.pedido}__${s.material_sugerido}`)) return false
+        if (rejectedSet.has(`${s.pedido}__${s.material_solicitado}`)) return false
+        // En oferta activa → ocultar todas las filas del mismo pedido+material
+        if (offeredKeys.has(`${s.pedido}__${s.material_sugerido}`)) return false
+        if (offeredKeys.has(`${s.pedido}__${s.material_solicitado}`)) return false
+        return true
+      })
       setSuggestions(filteredSug)
       setFilteredSugg(filteredSug)
       setConsumption(con.data ?? [])

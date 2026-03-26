@@ -132,18 +132,23 @@ export default function CrmVentaPage() {
       )
       setAcceptedMaterials(accSet)
 
-      const offeredIds = new Set(
-        (offeredRes.data ?? []).map((a: any) => a.source_id).filter(Boolean)
+      const offeredKeys = new Set(
+        (offeredRes.data ?? []).flatMap((a: any) => [
+          `${a.pedido}__${a.material_sugerido}`,
+          `${a.pedido}__${a.material_solicitado}`,
+        ].filter(k => k !== '__' && !k.startsWith('__') && !k.endsWith('__')))
       )
-
       const filteredSug = (sugRes.data ?? []).filter(s => {
+        // Fuente vacía → siempre visible
+        if (!s.fuente || s.fuente.trim() === '') return true
         // Rechazado temporalmente
         if (s.rechazado_hasta && s.rechazado_hasta >= today) return false
-        // Ya aceptado en oferta activa → en ventas
+        // Aceptado en venta
         if (accSet.has(`${s.pedido}__${s.material_sugerido}`)) return false
         if (accSet.has(`${s.pedido}__${s.material_solicitado}`)) return false
-        // En negociación activa (oferta abierta)
-        if (offeredIds.has(s.id)) return false
+        // En oferta activa
+        if (offeredKeys.has(`${s.pedido}__${s.material_sugerido}`)) return false
+        if (offeredKeys.has(`${s.pedido}__${s.material_solicitado}`)) return false
         return true
       })
       setSuggestions(filteredSug)
