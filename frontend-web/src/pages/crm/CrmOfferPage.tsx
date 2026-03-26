@@ -1,22 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
 const ITEM_ESTATUS = [
-  { value: 'ofertado',          label: 'Ofertado',             color: 'bg-gray-100 text-gray-600' },
-  { value: 'aceptado',          label: 'Aceptado',             color: 'bg-green-100 text-green-700' },
-  { value: 'rechazado',         label: 'Rechazado',            color: 'bg-red-100 text-red-600' },
-  { value: 'asignado_pedido',   label: 'Asignado a pedido',    color: 'bg-blue-100 text-blue-700' },
-  { value: 'solicitud_cedis',   label: 'Solicitud CEDIS',      color: 'bg-yellow-100 text-yellow-700' },
-  { value: 'en_transito',       label: 'En tránsito',          color: 'bg-orange-100 text-orange-700' },
-  { value: 'recibido_cedis',    label: 'Recibido en CEDIS',    color: 'bg-teal-100 text-teal-700' },
-  { value: 'ingresado_almacen', label: 'Ingresado almacén',    color: 'bg-purple-100 text-purple-700' },
-  { value: 'disponible',        label: 'Disponible',           color: 'bg-indigo-100 text-indigo-700' },
-  { value: 'surtido',           label: 'Surtido',              color: 'bg-cyan-100 text-cyan-700' },
-  { value: 'facturado',         label: 'Facturado',            color: 'bg-green-200 text-green-800' },
-  { value: 'cancelado',         label: 'Cancelado',            color: 'bg-gray-100 text-gray-400' },
+  { value: 'ofertado',  label: 'Ofertado',  color: 'bg-gray-100 text-gray-600' },
+  { value: 'aceptado',  label: 'Aceptado',  color: 'bg-green-100 text-green-700' },
+  { value: 'rechazado', label: 'Rechazado', color: 'bg-red-100 text-red-600' },
 ]
 
 const estatusColor = (e: string) => ITEM_ESTATUS.find(x => x.value === e)?.color ?? 'bg-gray-100 text-gray-500'
@@ -37,44 +27,33 @@ export default function CrmOfferPage() {
   const [saving, setSaving] = useState(false)
   const [offerNotes, setOfferNotes] = useState('')
 
+  // Panel lateral
   const [activeItem, setActiveItem] = useState<any>(null)
   const [itemHistory, setItemHistory] = useState<any[]>([])
-  const [newEstatus, setNewEstatus] = useState('')
+  const [newEstatus, setNewEstatus] = useState('ofertado')
   const [newComentario, setNewComentario] = useState('')
-  const [newFactura, setNewFactura] = useState('')
-  const [showCedisForm, setShowCedisForm] = useState(false)
-  const [cedisForm, setCedisForm] = useState({
-    centro_origen: '', almacen_origen: '',
-    centro_destino: '', almacen_destino: '',
-    cantidad: '', um: '', comentarios: '',
-  })
+  const [savingItem, setSavingItem] = useState(false)
 
+  // Formulario manual
   const [showManualForm, setShowManualForm] = useState(false)
   const [manualForm, setManualForm] = useState({
     material: '', descripcion: '', cantidad_ofertada: '',
     precio_oferta: '', um: '', numero_pedido: '',
     pedido_existente: false, pedido_pendiente: false,
-    centro_origen: '', almacen_origen: '',
-    centro_destino: '', almacen_destino: '',
   })
   const [manualLotes, setManualLotes] = useState([{ lote: '', fecha_caducidad: '' }])
 
   useEffect(() => {
     supabase.from('crm_clients').select('*').eq('id', clientId).single()
       .then(({ data }) => setClient(data))
-
-    if (!isNew && offerId) {
-      loadOffer(offerId)
-    } else if (isNew && sourceIds.length > 0 && sourceType) {
-      loadSourceItems()
-    }
+    if (!isNew && offerId) loadOffer(offerId)
+    else if (isNew && sourceIds.length > 0 && sourceType) loadSourceItems()
   }, [])
 
   const loadOffer = async (id: string) => {
     const { data: o } = await supabase.from('crm_offers').select('*').eq('id', id).single()
     setOffer(o); setOfferNotes(o?.notas ?? '')
     const { data: its } = await supabase.from('crm_offer_items').select('*').eq('offer_id', id)
-    // Parsear lotes que vienen como string JSON de la DB
     setItems((its ?? []).map(it => ({
       ...it,
       lotes: typeof it.lotes === 'string' ? JSON.parse(it.lotes) : (it.lotes ?? []),
@@ -87,23 +66,19 @@ export default function CrmOfferPage() {
     const { data } = await supabase.from(table).select('*').in('id', sourceIds)
     if (!data) return
 
-    // Buscar UM en catálogo para cada material
-    const materialCodes = [...new Set(data.map(r =>
+    // Buscar UM en catálogo
+    const matCodes = [...new Set(data.map(r =>
       r.material_sugerido ?? r.material_solicitado ?? r.material ?? ''
     ).filter(Boolean))]
-
     const umMap: Record<string, string> = {}
-    if (materialCodes.length > 0) {
-      const { data: catMats } = await supabase.from('catalog_materials')
-        .select('material, um').in('material', materialCodes)
-      catMats?.forEach(m => { if (m.um) umMap[m.material] = m.um })
+    if (matCodes.length > 0) {
+      const { data: cats } = await supabase.from('catalog_materials')
+        .select('material, um').in('material', matCodes)
+      cats?.forEach(m => { if (m.um) umMap[m.material] = m.um })
     }
 
-    const preItems = data.map(r => {
+    setItems(data.map(r => {
       const matCode = r.material_sugerido ?? r.material_solicitado ?? r.material ?? ''
-      const lotes = r.lote
-        ? [{ lote: String(r.lote), fecha_caducidad: r.fecha_caducidad ?? '' }]
-        : []
       return {
         _tempId:           r.id,
         source_type:       sourceType,
@@ -111,24 +86,21 @@ export default function CrmOfferPage() {
         material:          matCode,
         descripcion:       r.descripcion_sugerida ?? r.descripcion_solicitada ?? r.texto_material ?? '',
         cantidad_ofertada: sourceType === 'sugerencia'
-          ? String(r.cantidad_pendiente ?? r.cantidad_ofertar ?? '')
-          : '',
+          ? String(r.cantidad_pendiente ?? r.cantidad_ofertar ?? '') : '',
         precio_oferta:     String(r.precio ?? r.precio_unitario_ultima ?? ''),
         um:                umMap[matCode] ?? r.um ?? '',
         numero_pedido:     sourceType === 'sugerencia' ? String(r.pedido ?? '') : '',
         pedido_existente:  sourceType === 'sugerencia',
         pedido_pendiente:  sourceType === 'consumo',
-        lotes,
+        lotes:             r.lote ? [{ lote: String(r.lote), fecha_caducidad: r.fecha_caducidad ?? '' }] : [],
         centro_origen:     String(r.centro_sugerido ?? ''),
         almacen_origen:    String(r.almacen_sugerido ?? ''),
         centro_destino:    String(r.centro_pedido ?? r.centro ?? ''),
         almacen_destino:   String(r.almacen ?? ''),
-        requiere_traslado: false,
         aceptado:          false,
         estatus:           'ofertado',
       }
-    })
-    setItems(preItems)
+    }))
   }
 
   const createOffer = async () => {
@@ -144,13 +116,11 @@ export default function CrmOfferPage() {
   const saveOffer = async () => {
     if (items.length === 0) return toast.error('Agrega al menos un material')
     setSaving(true)
-
     let oid = savedOfferId
     if (!oid) {
       const o = await createOffer()
       if (!o) { setSaving(false); return }
-      oid = o.id
-      setSavedOfferId(oid)
+      oid = o.id; setSavedOfferId(oid)
     } else {
       await supabase.from('crm_offers').update({ notas: offerNotes }).eq('id', oid)
     }
@@ -164,10 +134,7 @@ export default function CrmOfferPage() {
           source_id:         it.source_id ?? null,
           material:          it.material,
           descripcion:       it.descripcion || null,
-          // Guardar lotes correctamente como JSONB
-          lotes:             it.lotes && it.lotes.length > 0
-                               ? it.lotes.filter((l: any) => l.lote)
-                               : [],
+          lotes:             it.lotes?.filter((l: any) => l.lote) ?? [],
           cantidad_ofertada: parseFloat(it.cantidad_ofertada) || null,
           precio_oferta:     parseFloat(it.precio_oferta) || null,
           um:                it.um || null,
@@ -178,45 +145,39 @@ export default function CrmOfferPage() {
           almacen_origen:    it.almacen_origen || null,
           centro_destino:    it.centro_destino || null,
           almacen_destino:   it.almacen_destino || null,
-          requiere_traslado: it.requiere_traslado ?? false,
+          requiere_traslado: false,
           aceptado:          false,
           estatus:           'ofertado',
         }))
       ).select()
-
       if (error) { toast.error(error.message); setSaving(false); return }
 
-      // Crear pedido CRM automáticamente para items con número de pedido
+      // Crear pedidos CRM para items con número de pedido
       const { data: { user } } = await supabase.auth.getUser()
-      const pedidosUnicos = [...new Set(
-        newItems.filter(it => it.numero_pedido).map(it => it.numero_pedido)
-      )]
+      const pedidosUnicos = [...new Set(newItems.filter(it => it.numero_pedido).map(it => it.numero_pedido))]
       for (const numPedido of pedidosUnicos) {
         const { data: exists } = await supabase.from('crm_orders')
           .select('id').eq('client_id', clientId).eq('numero_pedido', numPedido).single()
         if (!exists) {
           await supabase.from('crm_orders').insert({
-            client_id:     clientId,
-            numero_pedido: numPedido,
-            followup_id:   null,
-            estatus:       'generado',
-            comentarios:   `Generado desde oferta CRM`,
-            created_by:    user?.id,
+            client_id: clientId, numero_pedido: numPedido,
+            estatus: 'generado', comentarios: 'Generado desde oferta CRM',
+            created_by: user?.id,
           })
         }
       }
 
-      toast.success('Oferta guardada')
       if (inserted) {
-        const parsedInserted = inserted.map(it => ({
-          ...it,
-          lotes: typeof it.lotes === 'string' ? JSON.parse(it.lotes) : (it.lotes ?? []),
-        }))
-        setItems(prev => [...prev.filter(it => it.id), ...parsedInserted])
+        setItems(prev => [
+          ...prev.filter(it => it.id),
+          ...inserted.map(it => ({ ...it, lotes: typeof it.lotes === 'string' ? JSON.parse(it.lotes) : (it.lotes ?? []) }))
+        ])
       }
+      toast.success('Oferta guardada')
       nav(`/crm/${clientId}/offer/${oid}`, { replace: true })
     } else {
-      toast.success('Oferta actualizada')
+      await supabase.from('crm_offers').update({ notas: offerNotes }).eq('id', oid)
+      toast.success('Notas actualizadas')
     }
     setSaving(false)
   }
@@ -231,36 +192,23 @@ export default function CrmOfferPage() {
       const parsed = { ...updated, lotes: typeof updated.lotes === 'string' ? JSON.parse(updated.lotes) : (updated.lotes ?? []) }
       setItems(prev => prev.map(it => it.id === item.id ? parsed : it))
       if (activeItem?.id === item.id) setActiveItem(parsed)
+
+      // Guardar en historial
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('crm_offer_item_history').insert({
+        item_id: item.id, estatus_anterior: item.estatus,
+        estatus_nuevo: nuevoEstatus,
+        comentario: nuevoEstatus === 'aceptado' ? 'Cliente aceptó el material' : 'Marcado como ofertado',
+        created_by: user?.id,
+      })
     }
-  }
-
-  const updateItemField = (id: string, field: string, value: any) => {
-    setItems(prev => prev.map(it => it.id === id ? { ...it, [field]: value } : it))
-    if (activeItem?.id === id) setActiveItem((prev: any) => ({ ...prev, [field]: value }))
-  }
-
-  const saveItemField = async (item: any, field: string) => {
-    if (!item.id) return
-    await supabase.from('crm_offer_items').update({ [field]: item[field] }).eq('id', item.id)
   }
 
   const loadItemHistory = async (item: any) => {
-    const parsedItem = {
-      ...item,
-      lotes: typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? []),
-    }
-    setActiveItem(parsedItem)
-    setNewEstatus(parsedItem.estatus)
-    setNewComentario(''); setNewFactura(parsedItem.numero_factura ?? '')
-    setCedisForm({
-      centro_origen:   parsedItem.centro_origen ?? '',
-      almacen_origen:  parsedItem.almacen_origen ?? '',
-      centro_destino:  parsedItem.centro_destino ?? '',
-      almacen_destino: parsedItem.almacen_destino ?? '',
-      cantidad:        String(parsedItem.cantidad_ofertada ?? ''),
-      um:              parsedItem.um ?? '',
-      comentarios:     '',
-    })
+    const parsed = { ...item, lotes: typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? []) }
+    setActiveItem(parsed)
+    setNewEstatus(parsed.estatus)
+    setNewComentario('')
     if (item.id) {
       const { data } = await supabase.from('crm_offer_item_history')
         .select('*, users:created_by(full_name,email)')
@@ -271,167 +219,59 @@ export default function CrmOfferPage() {
 
   const updateItemEstatus = async () => {
     if (!activeItem?.id) return
+    setSavingItem(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const updates: any = { estatus: newEstatus }
-    if (newFactura) {
-      updates.numero_factura = newFactura
-      updates.fecha_factura = new Date().toISOString().split('T')[0]
-    }
-    await supabase.from('crm_offer_items').update(updates).eq('id', activeItem.id)
+    const isAceptado = newEstatus === 'aceptado'
+    await supabase.from('crm_offer_items').update({
+      estatus: newEstatus, aceptado: isAceptado,
+    }).eq('id', activeItem.id)
     await supabase.from('crm_offer_item_history').insert({
       item_id: activeItem.id, estatus_anterior: activeItem.estatus,
-      estatus_nuevo: newEstatus, comentario: newComentario || null, created_by: user?.id,
+      estatus_nuevo: newEstatus, comentario: newComentario || null,
+      created_by: user?.id,
     })
     toast.success('Estatus actualizado')
-    setNewComentario(''); setNewFactura('')
+    setNewComentario('')
     const { data: updated } = await supabase.from('crm_offer_items').select('*').eq('id', activeItem.id).single()
     if (updated) {
       const parsed = { ...updated, lotes: typeof updated.lotes === 'string' ? JSON.parse(updated.lotes) : (updated.lotes ?? []) }
       setActiveItem(parsed)
+      setNewEstatus(parsed.estatus)
       setItems(prev => prev.map(it => it.id === updated.id ? parsed : it))
     }
     const { data: hist } = await supabase.from('crm_offer_item_history')
       .select('*, users:created_by(full_name,email)')
       .eq('item_id', activeItem.id).order('created_at', { ascending: false })
     setItemHistory(hist ?? [])
+    setSavingItem(false)
   }
 
-  const saveCedisRequest = async () => {
-    if (!activeItem?.id) return
-    if (!cedisForm.centro_origen || !cedisForm.centro_destino || !cedisForm.cantidad)
-      return toast.error('Centro origen, destino y cantidad son obligatorios')
+  const updateItemField = (id: string, field: string, value: any) =>
+    setItems(prev => prev.map(it => it.id === id ? { ...it, [field]: value } : it))
 
-    const { data: { user } } = await supabase.auth.getUser()
-    const lotes = activeItem.lotes ?? []
-    const primerLote = lotes[0] ?? {}
-
-    let orderId = null
-    const pedidoNum = activeItem.numero_pedido ?? `OFR-${savedOfferId?.slice(0,8)}`
-    const { data: existingOrder } = await supabase.from('crm_orders')
-      .select('id').eq('client_id', clientId).eq('numero_pedido', pedidoNum).single()
-    if (existingOrder) {
-      orderId = existingOrder.id
-    } else {
-      const { data: newOrder } = await supabase.from('crm_orders').insert({
-        client_id: clientId, numero_pedido: pedidoNum,
-        estatus: 'en_proceso', comentarios: `Oferta CRM — ${activeItem.material}`,
-        created_by: user?.id,
-      }).select('id').single()
-      orderId = newOrder?.id
-    }
-
-    const autoComment = cedisForm.comentarios ||
-      `Pedido ${activeItem.numero_pedido ?? 'pendiente'} / ${activeItem.source_type ?? 'manual'}`
-
-    const { data: cedisReq } = await supabase.from('crm_cedis_requests').insert({
-      order_id: orderId, fecha_solicitud: new Date().toISOString().split('T')[0],
-      centro_origen:   cedisForm.centro_origen, almacen_origen:  cedisForm.almacen_origen || null,
-      centro_destino:  cedisForm.centro_destino, almacen_destino: cedisForm.almacen_destino || null,
-      codigo:      activeItem.material, descripcion: activeItem.descripcion,
-      cantidad:    parseFloat(cedisForm.cantidad), um: cedisForm.um || null,
-      lote:        primerLote.lote || null, fecha_caducidad: primerLote.fecha_caducidad || null,
-      comentarios: autoComment, estatus: 'solicitado', created_by: user?.id,
-    }).select('id').single()
-
-    if (cedisReq) {
-      await supabase.from('crm_cedis_history').insert({
-        request_id: cedisReq.id, estatus_nuevo: 'solicitado',
-        comentario: 'Creado desde oferta CRM', created_by: user?.id,
-      })
-      await supabase.from('crm_offer_items').update({
-        cedis_request_id: cedisReq.id, requiere_traslado: true,
-        estatus: 'solicitud_cedis',
-        centro_origen: cedisForm.centro_origen, almacen_origen: cedisForm.almacen_origen,
-        centro_destino: cedisForm.centro_destino, almacen_destino: cedisForm.almacen_destino,
-      }).eq('id', activeItem.id)
-      await supabase.from('crm_offer_item_history').insert({
-        item_id: activeItem.id, estatus_anterior: activeItem.estatus,
-        estatus_nuevo: 'solicitud_cedis',
-        comentario: `CEDIS: ${cedisForm.centro_origen} → ${cedisForm.centro_destino}`,
-        created_by: user?.id,
-      })
-      toast.success('Requerimiento CEDIS generado')
-      setShowCedisForm(false)
-      loadItemHistory({ ...activeItem, estatus: 'solicitud_cedis', cedis_request_id: cedisReq.id })
-      const { data: its } = await supabase.from('crm_offer_items').select('*').eq('offer_id', savedOfferId)
-      setItems((its ?? []).map(it => ({
-        ...it,
-        lotes: typeof it.lotes === 'string' ? JSON.parse(it.lotes) : (it.lotes ?? []),
-      })))
-    }
-  }
-
-  // Formato de traslado — incluye lote, caducidad y UM del item
-  const generateTransferFormat = (item: any) => {
-    const lotes = typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? [])
-    const lote = lotes[0] ?? {}
-    return {
-      'Fecha solicitud': new Date().toLocaleDateString('es-MX'),
-      'Centro Origen':   item.centro_origen ?? '',
-      'Almacén Origen':  item.almacen_origen ?? '',
-      'Centro Destino':  item.centro_destino ?? '',
-      'Almacén Destino': item.almacen_destino ?? '',
-      'Código':          item.material ?? '',
-      'Descripción':     item.descripcion ?? '',
-      'Cantidad':        item.cantidad_aceptada ?? item.cantidad_ofertada ?? '',
-      'UM':              item.um ?? '',
-      'Lote':            lote.lote ?? '',
-      'Fecha Caducidad': lote.fecha_caducidad ?? '',
-      'No.UD':           '',
-      'Delivery':        '',
-      'Estatus':         '',
-      'Comentarios':     `Pedido ${item.numero_pedido ?? 'pendiente'} / ${item.source_type ?? 'manual'}`,
-    }
-  }
-
-  const copyTransferFormat = (item: any) => {
-    const fmt = generateTransferFormat(item)
-    const headers = Object.keys(fmt).join('\t')
-    const values = Object.values(fmt).join('\t')
-    navigator.clipboard.writeText(headers + '\n' + values)
-    toast.success('Formato copiado al portapapeles')
-  }
-
-  const downloadTransferFormat = (item: any) => {
-    const fmt = generateTransferFormat(item)
-    const ws = XLSX.utils.json_to_sheet([fmt])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Traslado')
-    XLSX.writeFile(wb, `traslado_${item.material}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  const saveItemField = async (item: any, field: string) => {
+    if (!item.id) return
+    await supabase.from('crm_offer_items').update({ [field]: item[field] }).eq('id', item.id)
   }
 
   const addManualItem = async () => {
     if (!manualForm.material) return toast.error('El material es obligatorio')
-
-    // Buscar UM en catálogo si no se capturó
     let um = manualForm.um
     if (!um) {
       const { data: cat } = await supabase.from('catalog_materials')
         .select('um').eq('material', manualForm.material).single()
       um = cat?.um ?? ''
     }
-
     setItems(prev => [...prev, {
-      _tempId:           Date.now().toString(),
-      source_type:       'manual',
-      material:          manualForm.material,
-      descripcion:       manualForm.descripcion || null,
-      cantidad_ofertada: manualForm.cantidad_ofertada,
-      precio_oferta:     manualForm.precio_oferta,
-      um,
-      numero_pedido:     manualForm.numero_pedido || null,
-      pedido_existente:  manualForm.pedido_existente,
-      pedido_pendiente:  manualForm.pedido_pendiente,
-      lotes:             manualLotes.filter(l => l.lote),
-      centro_origen:     manualForm.centro_origen || null,
-      almacen_origen:    manualForm.almacen_origen || null,
-      centro_destino:    manualForm.centro_destino || null,
-      almacen_destino:   manualForm.almacen_destino || null,
-      requiere_traslado: false, aceptado: false, estatus: 'ofertado',
+      _tempId: Date.now().toString(), source_type: 'manual',
+      material: manualForm.material, descripcion: manualForm.descripcion || null,
+      cantidad_ofertada: manualForm.cantidad_ofertada, precio_oferta: manualForm.precio_oferta,
+      um, numero_pedido: manualForm.numero_pedido || null,
+      pedido_existente: manualForm.pedido_existente, pedido_pendiente: manualForm.pedido_pendiente,
+      lotes: manualLotes.filter(l => l.lote), aceptado: false, estatus: 'ofertado',
     }])
-    setManualForm({ material:'', descripcion:'', cantidad_ofertada:'', precio_oferta:'', um:'',
-      numero_pedido:'', pedido_existente:false, pedido_pendiente:false,
-      centro_origen:'', almacen_origen:'', centro_destino:'', almacen_destino:'' })
+    setManualForm({ material:'', descripcion:'', cantidad_ofertada:'', precio_oferta:'',
+      um:'', numero_pedido:'', pedido_existente:false, pedido_pendiente:false })
     setManualLotes([{ lote:'', fecha_caducidad:'' }])
     setShowManualForm(false)
     toast.success('Material agregado')
@@ -450,9 +290,7 @@ export default function CrmOfferPage() {
             {isNew && !savedOfferId ? 'Nueva oferta' : 'Oferta'}
           </h1>
           {offer && (
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-              {offer.tipo} · {offer.estatus}
-            </span>
+            <p className="text-xs text-gray-400 mt-0.5">{offer.tipo} · {offer.estatus}</p>
           )}
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -469,12 +307,12 @@ export default function CrmOfferPage() {
           {savedOfferId && (
             <>
               <button onClick={async () => {
-                if (!window.confirm('¿Cerrar esta oferta? Quedará archivada.')) return
+                if (!window.confirm('¿Cerrar esta oferta?')) return
                 await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
                 toast.success('Oferta cerrada')
                 nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50">
-                ✅ Cerrar oferta
+                ✅ Cerrar
               </button>
               <button onClick={async () => {
                 if (!window.confirm('¿Cancelar esta oferta?')) return
@@ -482,20 +320,21 @@ export default function CrmOfferPage() {
                 toast.success('Oferta cancelada')
                 nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-red-300 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">
-                Cancelar oferta
+                Cancelar
               </button>
             </>
           )}
         </div>
       </div>
 
+      {/* Notas */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
         <input className="w-full text-sm outline-none text-gray-600 placeholder-gray-300"
           placeholder="Notas de la oferta (opcional)..."
           value={offerNotes} onChange={e => setOfferNotes(e.target.value)} />
       </div>
 
-      {/* Formulario material manual */}
+      {/* Formulario manual */}
       {showManualForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
           <h2 className="font-semibold text-gray-700 mb-4">Agregar material manualmente</h2>
@@ -503,14 +342,10 @@ export default function CrmOfferPage() {
             {[
               { label: 'Material / Código *', key: 'material' },
               { label: 'Descripción', key: 'descripcion' },
-              { label: 'UM (se busca en catálogo automáticamente)', key: 'um' },
+              { label: 'UM (se busca en catálogo)', key: 'um' },
               { label: 'Cantidad ofertada', key: 'cantidad_ofertada', type: 'number' },
               { label: 'Precio de oferta', key: 'precio_oferta', type: 'number' },
               { label: 'Número de pedido', key: 'numero_pedido' },
-              { label: 'Centro origen', key: 'centro_origen' },
-              { label: 'Almacén origen', key: 'almacen_origen' },
-              { label: 'Centro destino', key: 'centro_destino' },
-              { label: 'Almacén destino', key: 'almacen_destino' },
             ].map(f => (
               <div key={f.key}>
                 <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
@@ -587,7 +422,7 @@ export default function CrmOfferPage() {
                 <table className="text-xs border-collapse w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      {['✓','Material','Descripción','Cant.','Precio','UM','Pedido','Lotes','Estatus','Traslado',''].map(h => (
+                      {['✓','Material','Descripción','Cant.','Precio','UM','Pedido','Lote / Cad.','Estatus',''].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -595,6 +430,7 @@ export default function CrmOfferPage() {
                   <tbody>
                     {items.map((item, i) => {
                       const lotes = typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? [])
+                      const lote = lotes[0] ?? {}
                       const isActive = activeItem?.id === item.id || activeItem?._tempId === item._tempId
                       return (
                         <tr key={item.id ?? item._tempId ?? i}
@@ -630,7 +466,7 @@ export default function CrmOfferPage() {
                                 onBlur={() => saveItemField(item, 'precio_oferta')} />
                             ) : item.precio_oferta ? `$${Number(item.precio_oferta).toLocaleString('es-MX')}` : '—'}
                           </td>
-                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{item.um ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{item.um ?? '—'}</td>
                           <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                             {item.id ? (
                               <input
@@ -641,25 +477,15 @@ export default function CrmOfferPage() {
                                 onBlur={() => saveItemField(item, 'numero_pedido')} />
                             ) : item.numero_pedido || (item.pedido_pendiente ? <span className="text-gray-300 italic">pendiente</span> : '—')}
                           </td>
-                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                            {lotes.length > 0
-                              ? lotes.map((l: any) => `${l.lote}${l.fecha_caducidad ? ` (${l.fecha_caducidad})` : ''}`).join(', ')
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                            {lote.lote
+                              ? `${lote.lote}${lote.fecha_caducidad ? ` / ${lote.fecha_caducidad}` : ''}`
                               : '—'}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estatusColor(item.estatus)}`}>
                               {estatusLabel(item.estatus)}
                             </span>
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            {item.id && item.aceptado && (
-                              <div className="flex gap-1">
-                                <button onClick={() => copyTransferFormat(item)} title="Copiar"
-                                  className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200">📋</button>
-                                <button onClick={() => downloadTransferFormat(item)} title="Descargar .xlsx"
-                                  className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200">⬇️</button>
-                              </div>
-                            )}
                           </td>
                           <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
                             {!item.id && (
@@ -677,10 +503,10 @@ export default function CrmOfferPage() {
           </div>
         </div>
 
-        {/* Panel de seguimiento */}
+        {/* Panel lateral — solo comentarios e historial */}
         {activeItem && (
-          <div className="w-80 flex-shrink-0 bg-white rounded-xl border border-gray-200"
-            style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+          <div className="w-72 flex-shrink-0 bg-white rounded-xl border border-gray-200 flex flex-col"
+            style={{ maxHeight: '80vh' }}>
             <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200 bg-gray-50 sticky top-0">
               <div>
                 <p className="text-sm font-bold text-gray-800">{activeItem.material}</p>
@@ -691,108 +517,58 @@ export default function CrmOfferPage() {
               <button onClick={() => setActiveItem(null)} className="text-gray-400 hover:text-gray-600 text-lg">×</button>
             </div>
 
-            <div className="p-4 space-y-4 text-xs">
-              {/* Info del item */}
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto text-xs">
+              {/* Info básica */}
               <div className="space-y-1">
-                <p><span className="text-gray-400">UM:</span> <span className="font-medium">{activeItem.um ?? '—'}</span></p>
-                <p><span className="text-gray-400">Pedido:</span> <span className="font-medium">{activeItem.numero_pedido ?? (activeItem.pedido_pendiente ? 'Pendiente de asignar' : '—')}</span></p>
+                {activeItem.numero_pedido && (
+                  <p><span className="text-gray-400">Pedido:</span> <span className="font-medium">{activeItem.numero_pedido}</span></p>
+                )}
+                <p><span className="text-gray-400">Cantidad:</span> <span className="font-medium">{activeItem.cantidad_ofertada ?? '—'} {activeItem.um}</span></p>
+                <p><span className="text-gray-400">Precio:</span> <span className="font-medium">
+                  {activeItem.precio_oferta ? `$${Number(activeItem.precio_oferta).toLocaleString('es-MX')}` : '—'}
+                </span></p>
                 {(activeItem.lotes ?? []).length > 0 && (
                   <div>
-                    <p className="text-gray-400 mb-1">Lotes:</p>
+                    <p className="text-gray-400">Lotes:</p>
                     {(activeItem.lotes ?? []).map((l: any, i: number) => (
-                      <p key={i} className="font-medium">
-                        {l.lote}{l.fecha_caducidad ? ` · Cad: ${l.fecha_caducidad}` : ''}
-                      </p>
+                      <p key={i} className="font-medium">{l.lote}{l.fecha_caducidad ? ` · Cad: ${l.fecha_caducidad}` : ''}</p>
                     ))}
                   </div>
                 )}
-                {activeItem.numero_factura && (
-                  <p><span className="text-gray-400">Factura:</span> <span className="font-medium text-green-700">{activeItem.numero_factura}</span></p>
-                )}
               </div>
 
-              {/* Acciones */}
-              <div className="border-t border-gray-100 pt-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-700">Acciones</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {activeItem.aceptado && (
-                    <>
-                      <button onClick={() => setShowCedisForm(!showCedisForm)}
-                        className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-600">
-                        🚚 Solicitar traslado CEDIS
-                      </button>
-                      <button onClick={() => copyTransferFormat(activeItem)}
-                        className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200">
-                        📋 Copiar formato
-                      </button>
-                      <button onClick={() => downloadTransferFormat(activeItem)}
-                        className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200">
-                        ⬇️ Descargar .xlsx
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* CEDIS form */}
-              {showCedisForm && (
-                <div className="border border-amber-200 rounded-xl p-3 bg-amber-50 space-y-2">
-                  <p className="text-xs font-semibold text-amber-700">Solicitud de traslado CEDIS</p>
-                  {[
-                    { label: 'Centro Origen *', key: 'centro_origen' },
-                    { label: 'Almacén Origen', key: 'almacen_origen' },
-                    { label: 'Centro Destino *', key: 'centro_destino' },
-                    { label: 'Almacén Destino', key: 'almacen_destino' },
-                    { label: 'Cantidad *', key: 'cantidad', type: 'number' },
-                    { label: 'UM', key: 'um' },
-                    { label: 'Comentario', key: 'comentarios' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="text-gray-500 block mb-0.5">{f.label}</label>
-                      <input type={f.type ?? 'text'}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white outline-none"
-                        value={cedisForm[f.key as keyof typeof cedisForm]}
-                        onChange={e => setCedisForm(x => ({ ...x, [f.key]: e.target.value }))} />
-                    </div>
-                  ))}
-                  <div className="flex gap-2">
-                    <button onClick={saveCedisRequest}
-                      className="bg-amber-500 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-600">
-                      Crear solicitud
-                    </button>
-                    <button onClick={() => setShowCedisForm(false)}
-                      className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium">
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Actualizar estatus */}
+              {/* Cambiar estatus */}
               <div className="border-t border-gray-100 pt-3">
-                <p className="text-xs font-semibold text-gray-700 mb-2">Actualizar estatus</p>
-                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 outline-none"
-                  value={newEstatus} onChange={e => setNewEstatus(e.target.value)}>
-                  {ITEM_ESTATUS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                {newEstatus === 'facturado' && (
-                  <input placeholder="Número de factura"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 outline-none focus:border-teal-400"
-                    value={newFactura} onChange={e => setNewFactura(e.target.value)} />
-                )}
-                <textarea placeholder="Comentario (opcional)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-14 resize-none outline-none focus:border-teal-400 mb-2"
+                <p className="font-semibold text-gray-700 mb-2">Respuesta del cliente</p>
+                <div className="flex gap-2 mb-2">
+                  {ITEM_ESTATUS.map(e => (
+                    <button key={e.value}
+                      onClick={() => setNewEstatus(e.value)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition ${
+                        newEstatus === e.value
+                          ? e.value === 'aceptado' ? 'bg-green-500 text-white border-green-500'
+                            : e.value === 'rechazado' ? 'bg-red-500 text-white border-red-500'
+                            : 'bg-gray-500 text-white border-gray-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}>
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs h-16 resize-none outline-none focus:border-teal-400 mb-2"
+                  placeholder="Comentario (opcional)..."
                   value={newComentario} onChange={e => setNewComentario(e.target.value)} />
-                <button onClick={updateItemEstatus}
-                  className="w-full bg-teal-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-                  Guardar
+                <button onClick={updateItemEstatus} disabled={savingItem}
+                  className="w-full bg-teal-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+                  {savingItem ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
 
               {/* Historial */}
               {itemHistory.length > 0 && (
                 <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">Historial</p>
+                  <p className="font-semibold text-gray-700 mb-2">Historial</p>
                   {itemHistory.map(h => (
                     <div key={h.id} className="mb-2 pb-2 border-b border-gray-50 last:border-0">
                       <div className="flex items-center gap-2 mb-0.5">
