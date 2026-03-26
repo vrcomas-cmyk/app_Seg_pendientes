@@ -182,27 +182,50 @@ export default function CrmOfferPage() {
     setSaving(false)
   }
 
+
   const toggleAceptado = async (item: any) => {
     if (!item.id) return
-    const nuevoEstatus = !item.aceptado ? 'aceptado' : 'ofertado'
+    const vaAceptar = !item.aceptado
+
+    if (vaAceptar) {
+      if (!window.confirm(`¿Confirmar venta del material ${item.material}? Pasará a Ventas para seguimiento.`)) return
+    }
+
+    const nuevoEstatus = vaAceptar ? 'aceptado' : 'ofertado'
     const { data: updated } = await supabase.from('crm_offer_items')
-      .update({ aceptado: !item.aceptado, estatus: nuevoEstatus })
+      .update({ aceptado: vaAceptar, estatus: nuevoEstatus })
       .eq('id', item.id).select().single()
+
     if (updated) {
       const parsed = { ...updated, lotes: typeof updated.lotes === 'string' ? JSON.parse(updated.lotes) : (updated.lotes ?? []) }
       setItems(prev => prev.map(it => it.id === item.id ? parsed : it))
       if (activeItem?.id === item.id) setActiveItem(parsed)
 
-      // Guardar en historial
       const { data: { user } } = await supabase.auth.getUser()
       await supabase.from('crm_offer_item_history').insert({
         item_id: item.id, estatus_anterior: item.estatus,
         estatus_nuevo: nuevoEstatus,
-        comentario: nuevoEstatus === 'aceptado' ? 'Cliente aceptó el material' : 'Marcado como ofertado',
+        comentario: vaAceptar ? 'Cliente confirmó venta — pasó a Ventas' : 'Marcado como ofertado',
         created_by: user?.id,
       })
+
+      if (vaAceptar) {
+        // Verificar si todos los items de la oferta ya están procesados
+        const { data: allItems } = await supabase.from('crm_offer_items')
+          .select('id, aceptado, estatus').eq('offer_id', savedOfferId)
+        const pending = (allItems ?? []).filter(i => !i.aceptado && i.estatus !== 'rechazado')
+        if (pending.length === 0) {
+          // Todos procesados — cerrar oferta automáticamente
+          await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
+          toast.success('✅ Venta confirmada — oferta cerrada automáticamente')
+          nav('/crm/ventas', { replace: true })
+        } else {
+          toast.success(`✅ Material ${item.material} pasó a Ventas`)
+        }
+      }
     }
   }
+
 
   const loadItemHistory = async (item: any) => {
     const parsed = { ...item, lotes: typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? []) }

@@ -92,12 +92,11 @@ export default function CrmOffersListPage() {
     setOffers(prev => prev.filter(o => o.id !== offerId))
   }
 
-  const totalItems = offers.reduce((acc, o) => acc + (o.crm_offer_items?.length ?? 0), 0)
-  const aceptados  = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) => it.aceptado).length ?? 0), 0)
-  const facturados = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) => it.estatus === 'facturado').length ?? 0), 0)
-  const enCedis    = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) =>
-    ['solicitud_cedis','en_transito','recibido_cedis','ingresado_almacen','disponible'].includes(it.estatus)
-  ).length ?? 0), 0)
+  const itemsNoAceptados = offers.flatMap(o => (o.crm_offer_items ?? []).filter((it: any) => !it.aceptado))
+  const totalItems   = itemsNoAceptados.length
+  const rechazados   = itemsNoAceptados.filter((it: any) => it.estatus === 'rechazado').length
+  const ofertados    = itemsNoAceptados.filter((it: any) => it.estatus === 'ofertado').length
+  const aceptados    = offers.reduce((acc, o) => acc + (o.crm_offer_items?.filter((it: any) => it.aceptado).length ?? 0), 0)
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -126,10 +125,10 @@ export default function CrmOffersListPage() {
       {/* Resumen */}
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
-          { label: 'Total materiales', value: totalItems, color: 'border-gray-200' },
+          { label: 'En negociación',  value: ofertados,  color: 'border-gray-200' },
+          { label: 'Rechazados',      value: rechazados, color: 'border-red-200 bg-red-50' },
           { label: 'Pasaron a ventas', value: aceptados, color: 'border-green-200 bg-green-50' },
-          { label: 'En proceso CEDIS', value: enCedis,    color: 'border-yellow-200 bg-yellow-50' },
-          { label: 'Facturados',       value: facturados, color: 'border-purple-200 bg-purple-50' },
+          { label: 'Ofertas activas', value: offers.filter(o => !['cerrada','cancelado'].includes(o.estatus)).length, color: 'border-blue-200 bg-blue-50' },
         ].map(s => (
           <div key={s.label} className={`bg-white rounded-xl border p-4 ${s.color}`}>
             <p className="text-xs text-gray-400">{s.label}</p>
@@ -171,6 +170,9 @@ export default function CrmOffersListPage() {
       <div className="space-y-3">
         {offers.map(offer => {
           const items = offer.crm_offer_items ?? []
+          const pendingItems = items.filter((it: any) => !it.aceptado && it.estatus !== 'rechazado')
+          // Ocultar ofertas donde todos los materiales ya se procesaron
+          if (pendingItems.length === 0 && items.length > 0 && !showClosed) return null
           const isClosed = ['cerrada','cancelado'].includes(offer.estatus)
           return (
             <div key={offer.id} className={`bg-white rounded-xl border overflow-hidden ${
