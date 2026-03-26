@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 export default function CrmListPage() {
@@ -24,7 +24,9 @@ export default function CrmListPage() {
 
   const loadClients = async () => {
     setLoading(true)
-    let q = supabase.from('crm_clients').select('*, crm_recipients(count), crm_followups(count)').order('solicitante')
+    let q = supabase.from('crm_clients')
+      .select('*, crm_recipients(count), crm_followups(count), crm_offers(id, estatus)')
+      .order('solicitante')
     if (search) q = q.or(`solicitante.ilike.%${search}%,razon_social.ilike.%${search}%,rfc.ilike.%${search}%`)
     const { data } = await q
     setClients(data ?? [])
@@ -117,13 +119,13 @@ export default function CrmListPage() {
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Reportes globales
           </Link>
-          <Link to="/crm/new"
-            className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
-            + Cliente
-          </Link>
           <Link to="/crm/materials"
             className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
             Materiales en tránsito
+          </Link>
+          <Link to="/crm/new"
+            className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
+            + Cliente
           </Link>
         </div>
       </div>
@@ -160,41 +162,30 @@ export default function CrmListPage() {
               </button>
             ))}
           </div>
-
           {loading && <p className="text-sm text-gray-400 p-6">Cargando...</p>}
-
           {!loading && followups.length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <p className="text-gray-400 text-sm mb-4">No hay seguimientos con este estatus.</p>
               <p className="text-xs text-gray-300">Crea un cliente y agrega un seguimiento para verlo aquí.</p>
             </div>
           )}
-
           {!loading && followups.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {overdue.length > 0 && (
-                <>
-                  <SectionHeader title="Vencidos" count={overdue.length} color="bg-red-50 text-red-600" />
-                  {overdue.map(f => <FollowupCard key={f.id} f={f} />)}
-                </>
+                <><SectionHeader title="Vencidos" count={overdue.length} color="bg-red-50 text-red-600" />
+                {overdue.map(f => <FollowupCard key={f.id} f={f} />)}</>
               )}
               {todayList.length > 0 && (
-                <>
-                  <SectionHeader title="Hoy" count={todayList.length} color="bg-teal-50 text-teal-700" />
-                  {todayList.map(f => <FollowupCard key={f.id} f={f} />)}
-                </>
+                <><SectionHeader title="Hoy" count={todayList.length} color="bg-teal-50 text-teal-700" />
+                {todayList.map(f => <FollowupCard key={f.id} f={f} />)}</>
               )}
               {upcoming.length > 0 && (
-                <>
-                  <SectionHeader title="Próximos" count={upcoming.length} color="bg-blue-50 text-blue-600" />
-                  {upcoming.map(f => <FollowupCard key={f.id} f={f} />)}
-                </>
+                <><SectionHeader title="Próximos" count={upcoming.length} color="bg-blue-50 text-blue-600" />
+                {upcoming.map(f => <FollowupCard key={f.id} f={f} />)}</>
               )}
               {noDate.length > 0 && (
-                <>
-                  <SectionHeader title="Sin fecha asignada" count={noDate.length} color="bg-gray-50 text-gray-500" />
-                  {noDate.map(f => <FollowupCard key={f.id} f={f} />)}
-                </>
+                <><SectionHeader title="Sin fecha asignada" count={noDate.length} color="bg-gray-50 text-gray-500" />
+                {noDate.map(f => <FollowupCard key={f.id} f={f} />)}</>
               )}
             </div>
           )}
@@ -213,37 +204,53 @@ export default function CrmListPage() {
             {!loading && clients.length === 0 && (
               <div className="p-12 text-center">
                 <p className="text-gray-400 text-sm mb-4">No hay clientes registrados.</p>
-                <Link to="/crm/import"
+                <Link to="/admin"
                   className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-                  Cargar Excel para importar
+                  Ir a Admin para importar
                 </Link>
               </div>
             )}
-            {clients.map(c => (
-              <Link to={`/crm/${c.id}`} key={c.id}
-                className="flex items-center justify-between px-5 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800">{c.solicitante}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {c.razon_social && <span className="mr-3">{c.razon_social}</span>}
-                    {c.rfc && <span className="mr-3">RFC: {c.rfc}</span>}
-                    {c.estado && <span className="mr-3">{c.estado}</span>}
-                    {c.ramo && <span>{c.ramo}</span>}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4 flex-shrink-0 ml-4">
-                  <div className="text-center">
-                    <p className="text-xs text-gray-400">Destinatarios</p>
-                    <p className="text-sm font-semibold text-gray-700">{c.crm_recipients?.[0]?.count ?? 0}</p>
+            {clients.map(c => {
+              const activeOffers = (c.crm_offers ?? []).filter((o: any) =>
+                !['cerrada','cancelado'].includes(o.estatus)
+              ).length
+              return (
+                <div key={c.id}
+                  className="flex items-center justify-between px-5 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <Link to={`/crm/${c.id}`} className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-800">{c.solicitante}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {c.razon_social && <span className="mr-3">{c.razon_social}</span>}
+                      {c.rfc && <span className="mr-3">RFC: {c.rfc}</span>}
+                      {c.estado && <span className="mr-3">{c.estado}</span>}
+                      {c.ramo && <span>{c.ramo}</span>}
+                    </p>
+                  </Link>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400">Destinatarios</p>
+                      <p className="text-sm font-semibold text-gray-700">{c.crm_recipients?.[0]?.count ?? 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-400">Seguimientos</p>
+                      <p className="text-sm font-semibold text-gray-700">{c.crm_followups?.[0]?.count ?? 0}</p>
+                    </div>
+                    {activeOffers > 0 && (
+                      <Link
+                        to={`/crm/${c.id}`}
+                        state={{ tab: 'ofertas' }}
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 bg-teal-50 border border-teal-200 text-teal-700 px-2.5 py-1 rounded-lg hover:bg-teal-100 transition"
+                        title="Ver ofertas activas">
+                        <span className="text-xs font-bold">{activeOffers}</span>
+                        <span className="text-xs">oferta{activeOffers > 1 ? 's' : ''}</span>
+                      </Link>
+                    )}
+                    <Link to={`/crm/${c.id}`} className="text-gray-300 text-lg">›</Link>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-400">Seguimientos</p>
-                    <p className="text-sm font-semibold text-gray-700">{c.crm_followups?.[0]?.count ?? 0}</p>
-                  </div>
-                  <span className="text-gray-300 text-lg">›</span>
                 </div>
-              </Link>
-            ))}
+              )
+            })}
           </div>
         </>
       )}

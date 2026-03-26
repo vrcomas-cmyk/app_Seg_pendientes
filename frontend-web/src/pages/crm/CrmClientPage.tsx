@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import CrmOrderStatusBar from './CrmOrderStatusBar'
 import RecipientsTable from '../../components/RecipientsTable'
@@ -33,6 +33,11 @@ export default function CrmClientPage() {
   const [selectedCons, setSelectedCons] = useState<string[]>([])
   const [filteredSugg, setFilteredSugg] = useState<any[]>([])
   const [filteredCons, setFilteredCons] = useState<any[]>([])
+
+  const location = useLocation()
+    useEffect(() => {
+      if ((location.state as any)?.tab) setTab((location.state as any).tab)
+    }, [])
 
   const load = async () => {
     const [c, r, co, f, o] = await Promise.all([
