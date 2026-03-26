@@ -85,9 +85,8 @@ export default function AdminPage() {
   const refPrecios = useRef<HTMLInputElement>(null)
   // Resultados
   const [results, setResults] = useState<Record<Section, string | null>>({
-    clientes: null, sugerencias: null, consumo: null, catalogo: null
+    clientes: null, sugerencias: null, consumo: null, precios: null, catalogo: null
   })
-
   const setResult = (s: Section, msg: string) =>
     setResults(r => ({ ...r, [s]: msg }))
 
