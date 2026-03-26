@@ -129,7 +129,17 @@ export default function CrmSuggestionsImportPage() {
       // Deduplicar: mismo pedido+material_solicitado+destinatario → quedarse con el que tenga más datos
       const dedupMap = new Map<string, any>()
       for (const row of inserts) {
-        const key = `${row.pedido}__${row.material_solicitado}__${row.destinatario}`
+        const key = [
+          row.pedido,
+          row.material_solicitado,
+          row.destinatario,
+          row.fuente ?? '',
+          row.material_sugerido ?? '',
+          row.centro_sugerido ?? '',
+          row.almacen_sugerido ?? '',
+          row.lote ?? '',
+          row.fecha_caducidad ?? '',
+        ].join('__')
         if (!dedupMap.has(key)) {
           dedupMap.set(key, row)
         } else {
