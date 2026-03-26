@@ -120,11 +120,27 @@ export default function CrmSuggestionsImportPage() {
             inv_1001: parseNum(col(r,'Inv 1001')), inv_1003: parseNum(col(r,'Inv 1003')),
             inv_1004: parseNum(col(r,'Inv 1004')), inv_1017: parseNum(col(r,'Inv 1017')),
             inv_1018: parseNum(col(r,'Inv 1018')), inv_1022: parseNum(col(r,'Inv 1022')),
-            inv_1036: parseNum(col(r,'Inv 1036')), bloqueado: parseNum(col(r,'Bloqueado')),
+            inv_1036: parseNum(col(r,'Inv 1036')), bloqueado: col(r,'Bloqueado') || null,
             client_id:  sol ? (clientMap[sol] ?? null) : null,
             created_by: user?.id,
           }
         }).filter(r => r.solicitante || r.pedido)
+
+      // Deduplicar: mismo pedido+material_solicitado+destinatario → quedarse con el que tenga más datos
+      const dedupMap = new Map<string, any>()
+      for (const row of inserts) {
+        const key = `${row.pedido}__${row.material_solicitado}__${row.destinatario}`
+        if (!dedupMap.has(key)) {
+          dedupMap.set(key, row)
+        } else {
+          // Preferir el que tenga más campos numéricos con valor
+          const existing = dedupMap.get(key)
+          const existingScore = Object.values(existing).filter(v => v !== null && v !== '').length
+          const newScore = Object.values(row).filter(v => v !== null && v !== '').length
+          if (newScore > existingScore) dedupMap.set(key, row)
+        }
+      }
+      inserts = Array.from(dedupMap.values())
 
       } else {
         inserts = rows.map(r => {
