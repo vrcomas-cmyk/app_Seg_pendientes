@@ -139,6 +139,8 @@ export default function CrmSuggestionsImportPage() {
           row.almacen_sugerido ?? '',
           row.lote ?? '',
           row.fecha_caducidad ?? '',
+          String(row.disponible ?? ''),
+          String(row.cantidad_ofertar ?? ''),
         ].join('__')
         if (!dedupMap.has(key)) {
           dedupMap.set(key, row)
