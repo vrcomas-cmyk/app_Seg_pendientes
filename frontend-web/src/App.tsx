@@ -24,6 +24,10 @@ import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CrmVentaPage from './pages/crm/CrmVentaPage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
+import MscListPage from './pages/msc/MscListPage'
+import MscNewPage from './pages/msc/MscNewPage'
+import MscDetailPage from './pages/msc/MscDetailPage'
+import MscInventoryPage from './pages/msc/MscInventoryPage'
 import Layout from './components/Layout'
 
 export default function App() {
@@ -73,6 +77,10 @@ export default function App() {
         <Route path="/crm/:clientId/venta" element={<CrmVentaPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/msc" element={<MscListPage />} />
+        <Route path="/msc/nueva" element={<MscNewPage />} />
+        <Route path="/msc/inventario" element={<MscInventoryPage />} />
+        <Route path="/msc/:id" element={<MscDetailPage />} />
       </Route>
     </Routes>
   )

@@ -34,6 +34,7 @@ export default function Layout() {
           <span className="font-bold text-teal-600 text-lg flex-shrink-0">Pendientes</span>
           <NavLink to="/tasks"     className={linkClass}>Pendientes</NavLink>
           <NavLink to="/crm"       className={linkClass}>CRM</NavLink>
+          <NavLink to="/msc"       className={linkClass}>MSC</NavLink>
           <NavLink to="/catalog"   className={linkClass}>Catálogo</NavLink>
           {isTeam && <NavLink to="/admin" className={linkClass}>Admin</NavLink>}
         </div>
