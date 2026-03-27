@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
@@ -25,7 +25,6 @@ import CrmVentaPage from './pages/crm/CrmVentaPage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
 import Layout from './components/Layout'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
 export default function App() {
   const [session, setSession] = useState<any>(null)
