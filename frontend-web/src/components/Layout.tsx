@@ -32,7 +32,6 @@ export default function Layout() {
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-5 overflow-x-auto flex-shrink-0">
           <span className="font-bold text-teal-600 text-lg flex-shrink-0">Pendientes</span>
-          <NavLink to="/dashboard" className={linkClass}>Dashboard</NavLink>
           <NavLink to="/tasks"     className={linkClass}>Pendientes</NavLink>
           <NavLink to="/crm"       className={linkClass}>CRM</NavLink>
           <NavLink to="/catalog"   className={linkClass}>Catálogo</NavLink>

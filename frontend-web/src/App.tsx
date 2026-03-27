@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
-import DashboardPage from './pages/DashboardPage'
 import TaskListPage from './pages/TaskListPage'
 import NewTaskPage from './pages/NewTaskPage'
 import TaskDetailPage from './pages/TaskDetailPage'
@@ -26,6 +25,7 @@ import CrmVentaPage from './pages/crm/CrmVentaPage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
 import Layout from './components/Layout'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
 export default function App() {
   const [session, setSession] = useState<any>(null)
@@ -50,8 +50,8 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/" element={<Navigate to="/tasks" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/tasks" replace />} />
         <Route path="/tasks" element={<TaskListPage />} />
         <Route path="/tasks/new" element={<NewTaskPage />} />
         <Route path="/tasks/:id" element={<TaskDetailPage />} />
