@@ -7,7 +7,9 @@ interface Props {
 
 export default function ImageLightbox({ src, onClose }: Props) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
@@ -15,12 +17,17 @@ export default function ImageLightbox({ src, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <div className="relative max-w-5xl max-h-full" onClick={e => e.stopPropagation()}>
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-5xl max-h-full"
+        onClick={e => e.stopPropagation()}
+      >
         <button
           onClick={onClose}
-          className="absolute -top-10 right-0 text-white text-3xl hover:text-gray-300 font-light">
-          x
+          className="absolute -top-10 right-0 text-white text-3xl hover:text-gray-300 font-light"
+        >
+          X
         </button>
         <img
           src={src}
@@ -33,7 +40,8 @@ export default function ImageLightbox({ src, onClose }: Props) {
           target="_blank"
           rel="noreferrer"
           onClick={e => e.stopPropagation()}
-          className="absolute -bottom-9 right-0 text-xs text-gray-400 hover:text-white">
+          className="absolute -bottom-9 right-0 text-xs text-gray-400 hover:text-white"
+        >
           Abrir en nueva pestana
         </a>
       </div>
