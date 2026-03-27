@@ -26,12 +26,13 @@ export default function TaskSteps({ taskId }: Props) {
   }
 
   const loadHistory = async (stepId: string) => {
-    const { data } = await supabase.from('task_step_history')
+    const { data, error } = await supabase.from('task_step_history')
       .select('*, users:created_by(full_name, email)')
       .eq('step_id', stepId).order('created_at')
+    console.log('loadHistory', stepId, data, error)
     setStepHistories(prev => ({ ...prev, [stepId]: data ?? [] }))
   }
-
+  
   useEffect(() => { load() }, [taskId])
 
   const addStep = async () => {
