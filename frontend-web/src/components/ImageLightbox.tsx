@@ -35,7 +35,7 @@ export default function ImageLightbox({ src, onClose }: Props) {
           className="max-w-full object-contain rounded-lg shadow-2xl"
           style={{ maxHeight: '85vh' }}
         />
-        
+        <a
           href={src}
           target="_blank"
           rel="noreferrer"
