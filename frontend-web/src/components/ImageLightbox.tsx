@@ -10,7 +10,7 @@ export default function ImageLightbox({ src, onClose }: Props) {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [onClose])
 
   return (
     <div
@@ -20,20 +20,21 @@ export default function ImageLightbox({ src, onClose }: Props) {
         <button
           onClick={onClose}
           className="absolute -top-10 right-0 text-white text-3xl hover:text-gray-300 font-light">
-          ×
+          x
         </button>
         <img
           src={src}
           alt="Vista previa"
-          className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl"
-          style={{ maxHeight: '85vh' }} />
+          className="max-w-full object-contain rounded-lg shadow-2xl"
+          style={{ maxHeight: '85vh' }}
+        />
         
           href={src}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noreferrer"
           onClick={e => e.stopPropagation()}
           className="absolute -bottom-9 right-0 text-xs text-gray-400 hover:text-white">
-          Abrir en nueva pestaña →
+          Abrir en nueva pestana
         </a>
       </div>
     </div>
