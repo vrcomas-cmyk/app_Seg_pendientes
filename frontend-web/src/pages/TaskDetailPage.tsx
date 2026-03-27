@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
 import FileUploader from '../components/FileUploader'
+import ImageLightbox from '../components/ImageLightbox'
+import PasteImageUploader from '../components/PasteImageUploader'
 import toast from 'react-hot-toast'
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -22,6 +24,7 @@ export default function TaskDetailPage() {
   const [calMode, setCalMode] = useState<'none' | 'create' | 'reschedule'>('none')
   const [eventDate, setEventDate] = useState('')
   const [eventTime, setEventTime] = useState('09:00')
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   const loadAttachments = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -37,11 +40,9 @@ export default function TaskDetailPage() {
       supabase.from('tasks').select('*').eq('id', id).single(),
       supabase.from('task_history').select('*, users:created_by(full_name, email)').eq('task_id', id).order('created_at'),
       supabase.auth.getUser().then(({ data: { user } }) =>
-      supabase.from('calendar_events').select('*')
-        .eq('task_id', id)
-        .eq('is_active', true)
-        .eq('created_by', user?.id)
-    ),
+        supabase.from('calendar_events').select('*')
+          .eq('task_id', id).eq('is_active', true).eq('created_by', user?.id)
+      ),
     ])
     setTask(t.data)
     setHistory(h.data ?? [])
@@ -49,7 +50,6 @@ export default function TaskDetailPage() {
     if (t.data?.due_date) setEventDate(t.data.due_date)
     await loadAttachments()
 
-    // Buscar si este task está vinculado a un seguimiento CRM
     const { data: followup } = await supabase
       .from('crm_followups')
       .select('*, crm_clients(id, solicitante)')
@@ -85,26 +85,21 @@ export default function TaskDetailPage() {
       task_id: id, comment: `Pendiente marcado como ${status}.`, created_by: user?.id
     })
     toast.success(`Marcado como ${status}`)
-    load()
-    setLoading(false)
+    load(); setLoading(false)
   }
 
   const handleComplete = async () => {
     if (hasCalendarEvent) {
       const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
       await changeStatus('completado', remove)
-    } else {
-      await changeStatus('completado', false)
-    }
+    } else { await changeStatus('completado', false) }
   }
 
   const handleReactivate = async () => {
     if (hasCalendarEvent) {
       const remove = window.confirm('¿También quieres eliminar el evento de Google Calendar?')
       await changeStatus('reactivado', remove)
-    } else {
-      await changeStatus('reactivado', false)
-    }
+    } else { await changeStatus('reactivado', false) }
   }
 
   const handleCreate = async () => {
@@ -117,19 +112,14 @@ export default function TaskDetailPage() {
       toast.success('Evento creado en Google Calendar')
       if (result.htmlLink) window.open(result.htmlLink, '_blank')
       setCalMode('none'); load()
-    } else {
-      toast.error(result.error ?? 'Error al crear evento')
-    }
+    } else { toast.error(result.error ?? 'Error al crear evento') }
   }
 
   const handleReschedule = async () => {
     if (!eventDate || !eventTime) return toast.error('Selecciona fecha y hora')
     const result = await rescheduleEvent(id!, eventDate, eventTime)
-    if (result.success) {
-      toast.success('Evento reagendado'); setCalMode('none'); load()
-    } else {
-      toast.error(result.error ?? 'Error al reagendar')
-    }
+    if (result.success) { toast.success('Evento reagendado'); setCalMode('none'); load() }
+    else toast.error(result.error ?? 'Error al reagendar')
   }
 
   const handleCancel = async () => {
@@ -137,6 +127,29 @@ export default function TaskDetailPage() {
     if (result.success) { toast.success('Evento eliminado'); load() }
     else toast.error(result.error ?? 'Error')
   }
+
+  // Renderiza comentario con imágenes embebidas en markdown
+  const renderComment = (text: string) => {
+    const parts = text.split(/(!\[.*?\]\(.*?\))/)
+    return parts.map((part, i) => {
+      const match = part.match(/!\[(.*?)\]\((.*?)\)/)
+      if (match) {
+        return (
+          <div key={i} className="mt-2 relative group inline-block cursor-pointer"
+            onClick={() => setLightbox(match[2])}>
+            <img src={match[2]} alt={match[1]}
+              className="max-h-40 rounded-lg border border-gray-200 hover:opacity-90 transition object-cover" />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+              <span className="bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">Ver imagen</span>
+            </div>
+          </div>
+        )
+      }
+      return part ? <span key={i}>{part}</span> : null
+    })
+  }
+
+  const isImage = (url: string) => /\.(png|jpg|jpeg|gif|webp)$/i.test(url)
 
   if (!task) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
 
@@ -150,25 +163,24 @@ export default function TaskDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+
       <button onClick={() => nav('/tasks')}
         className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
         ← Volver
       </button>
 
-      {/* Vinculación CRM — banner visible si viene del CRM */}
+      {/* Banner CRM */}
       {crmFollowup && (
         <div className="bg-teal-50 border border-teal-200 rounded-xl px-5 py-3 mb-4 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-0.5">Vinculado a CRM</p>
-            <p className="text-sm text-teal-800 font-medium">
-              {crmFollowup.crm_clients?.solicitante}
-            </p>
+            <p className="text-sm text-teal-800 font-medium">{crmFollowup.crm_clients?.solicitante}</p>
             <p className="text-xs text-teal-600">
               Seguimiento: {crmFollowup.tipo?.replace('_', ' ')} · {crmFollowup.estatus?.replace('_', ' ')}
             </p>
           </div>
-          <Link
-            to={`/crm/${crmFollowup.client_id}/followup/${crmFollowup.id}`}
+          <Link to={`/crm/${crmFollowup.client_id}/followup/${crmFollowup.id}`}
             className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700 flex-shrink-0">
             Ver en CRM →
           </Link>
@@ -264,26 +276,87 @@ export default function TaskDetailPage() {
         )}
       </div>
 
-      {/* Archivos adjuntos */}
+      {/* Archivos adjuntos + paste imágenes */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <h2 className="font-semibold text-gray-700 mb-4">Archivos adjuntos</h2>
         <FileUploader taskId={id!} attachments={attachments} onRefresh={loadAttachments} />
+
+        {/* Vista previa de imágenes en adjuntos */}
+        {attachments.filter(a => isImage(a.url ?? '')).length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs text-gray-400 mb-2 font-medium">Imágenes adjuntas</p>
+            <div className="flex flex-wrap gap-2">
+              {attachments.filter(a => isImage(a.url ?? '')).map(att => (
+                <div key={att.id ?? att.url} className="relative group cursor-pointer"
+                  onClick={() => setLightbox(att.url)}>
+                  <img src={att.url} alt={att.name}
+                    className="w-24 h-24 object-cover rounded-lg border border-gray-200 hover:opacity-90 transition" />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition rounded-lg bg-black bg-opacity-30">
+                    <span className="text-white text-xs font-medium">Ver</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Zona de paste */}
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <p className="text-xs text-gray-500 mb-2 font-medium">📷 Pegar captura de pantalla</p>
+          <PasteImageUploader
+            taskId={task.id}
+            mode="zone"
+            onUploaded={async (url, name) => {
+              const { data: { user } } = await supabase.auth.getUser()
+              await supabase.from('attachments').insert({
+                task_id: task.id, url, name,
+                type: 'image', created_by: user?.id,
+              })
+              loadAttachments()
+              toast.success('Imagen guardada en adjuntos')
+            }}
+          />
+        </div>
       </div>
 
-      {/* Seguimiento */}
+      {/* Seguimiento con paste de imágenes */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <h2 className="font-semibold text-gray-700 mb-4">Agregar seguimiento</h2>
-        <textarea
-          className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm h-20 resize-none outline-none focus:border-teal-400 mb-3"
-          placeholder="Comentario u observación" value={comment}
-          onChange={e => setComment(e.target.value)} />
-        <input
-          className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-teal-400 mb-3"
-          placeholder="Con quién se revisó (opcional)" value={reviewedWith}
-          onChange={e => setReviewedWith(e.target.value)} />
-        <button onClick={addHistory}
-          className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-          Agregar
-        </button>
+        <PasteImageUploader
+          taskId={task.id}
+          mode="comment"
+          placeholder="Escribe un comentario o pega una captura con Ctrl+V..."
+          onComment={async (text, images) => {
+            const { data: { user } } = await supabase.auth.getUser()
+            const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
+            const fullComment = text + imageLinks
+
+            await supabase.from('task_history').insert({
+              task_id: id,
+              comment: fullComment,
+              reviewed_with: reviewedWith || null,
+              created_by: user?.id,
+            })
+
+            // Guardar imágenes también en adjuntos
+            for (const img of images) {
+              await supabase.from('attachments').insert({
+                task_id: task.id, url: img.url, name: img.name,
+                type: 'image', created_by: user?.id,
+              })
+            }
+
+            toast.success('Comentario agregado')
+            setReviewedWith('')
+            load()
+          }}
+        />
+        <div className="mt-3">
+          <input
+            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-teal-400"
+            placeholder="Con quién se revisó (opcional)"
+            value={reviewedWith} onChange={e => setReviewedWith(e.target.value)} />
+        </div>
       </div>
 
       {/* Historial */}
@@ -292,7 +365,9 @@ export default function TaskDetailPage() {
         {history.length === 0 && <p className="text-sm text-gray-400">Sin comentarios aún.</p>}
         {history.map(h => (
           <div key={h.id} className="border-b border-gray-100 last:border-0 py-3">
-            <p className="text-sm text-gray-700">{h.comment}</p>
+            <div className="text-sm text-gray-700">
+              {renderComment(h.comment ?? '')}
+            </div>
             {h.reviewed_with && <p className="text-xs text-gray-400 mt-1">Con: {h.reviewed_with}</p>}
             <p className="text-xs text-gray-300 mt-1">
               {new Date(h.created_at).toLocaleString('es-MX')} · {h.users?.full_name || h.users?.email || 'Usuario'}
