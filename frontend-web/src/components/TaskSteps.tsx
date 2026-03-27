@@ -27,12 +27,12 @@ export default function TaskSteps({ taskId }: Props) {
 
   const loadHistory = async (stepId: string) => {
     const { data, error } = await supabase.from('task_step_history')
-      .select('*, users:created_by(full_name, email)')
+      .select('*')
       .eq('step_id', stepId).order('created_at')
     console.log('loadHistory', stepId, data, error)
     setStepHistories(prev => ({ ...prev, [stepId]: data ?? [] }))
   }
-  
+
   useEffect(() => { load() }, [taskId])
 
   const addStep = async () => {
@@ -245,7 +245,7 @@ export default function TaskSteps({ taskId }: Props) {
                           <div key={h.id} className="bg-white rounded-lg px-3 py-2 border border-gray-100">
                             <div className="text-xs text-gray-700">{renderComment(h.comment ?? '')}</div>
                             <p className="text-xs text-gray-300 mt-1">
-                              {new Date(h.created_at).toLocaleString('es-MX')} · {h.users?.full_name || h.users?.email || 'Usuario'}
+                              {new Date(h.created_at).toLocaleString('es-MX')} · {'Usuario'}
                             </p>
                           </div>
                         ))}
