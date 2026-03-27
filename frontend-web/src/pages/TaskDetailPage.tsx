@@ -5,6 +5,7 @@ import { useCalendar } from '../hooks/useCalendar'
 import FileUploader from '../components/FileUploader'
 import ImageLightbox from '../components/ImageLightbox'
 import PasteImageUploader from '../components/PasteImageUploader'
+import TaskSteps from '../components/TaskSteps'
 import toast from 'react-hot-toast'
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -169,6 +170,9 @@ export default function TaskDetailPage() {
         className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
         ← Volver
       </button>
+
+      {/* Pasos / Subtareas */}
+      <TaskSteps taskId={task.id} />
 
       {/* Banner CRM */}
       {crmFollowup && (
