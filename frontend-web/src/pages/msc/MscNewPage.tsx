@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -16,22 +16,159 @@ const emptyRow = (): ItemRow => ({
 })
 
 const COLS = [
-  { key: 'codigo',          label: 'Codigo *',        width: 'w-28' },
-  { key: 'descripcion',     label: 'Articulo',         width: 'w-64' },
-  { key: 'cantidad_pedida', label: 'Cantidad *',       width: 'w-24', type: 'number' },
-  { key: 'precio_unitario', label: 'Precio Unitario',  width: 'w-32', type: 'number' },
-  { key: 'total',           label: 'Total',            width: 'w-32', type: 'number' },
+  { key: 'codigo',          label: 'Codigo *',       width: 'w-28' },
+  { key: 'descripcion',     label: 'Articulo',        width: 'w-64' },
+  { key: 'cantidad_pedida', label: 'Cantidad *',      width: 'w-24', type: 'number' },
+  { key: 'precio_unitario', label: 'Precio Unitario', width: 'w-32', type: 'number' },
+  { key: 'total',           label: 'Total',           width: 'w-32', type: 'number' },
 ]
+
+// Autosize textarea
+function AutoTextarea({ value, onChange, placeholder, className }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; className?: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = 'auto'
+      ref.current.style.height = Math.min(ref.current.scrollHeight, 160) + 'px'
+    }
+  }, [value])
+  return (
+    <textarea ref={ref} value={value} placeholder={placeholder}
+      onChange={e => onChange(e.target.value)}
+      className={`${className} resize-none overflow-hidden`}
+      rows={2} style={{ minHeight: '64px', maxHeight: '160px' }} />
+  )
+}
+
+// Autocomplete de materiales
+function MaterialInput({ value, onChange, onSelect, field }: {
+  value: string
+  onChange: (v: string) => void
+  onSelect: (codigo: string, descripcion: string) => void
+  field: 'codigo' | 'descripcion'
+}) {
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const search = async (q: string) => {
+    onChange(q)
+    if (q.length < 2) { setSuggestions([]); setOpen(false); return }
+    const col = field === 'codigo' ? 'material' : 'description'
+    const { data } = await supabase.from('catalog_materials')
+      .select('material, description')
+      .ilike(col, `%${q}%`)
+      .limit(6)
+    setSuggestions(data ?? [])
+    setOpen(true)
+  }
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <input
+        type="text"
+        className="w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent"
+        value={value}
+        onChange={e => search(e.target.value)}
+        onFocus={() => value.length >= 2 && setOpen(true)}
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-72 max-h-48 overflow-y-auto">
+          {suggestions.map(s => (
+            <button key={s.material} type="button"
+              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
+              onMouseDown={() => {
+                onSelect(s.material, s.description ?? '')
+                setOpen(false)
+              }}>
+              <span className="font-mono font-semibold text-gray-800">{s.material}</span>
+              <span className="text-gray-500 ml-2 truncate">{s.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Autocomplete de clientes
+function ClienteInput({ value, onChange, onSelect }: {
+  value: string
+  onChange: (v: string) => void
+  onSelect: (id: string, nombre: string) => void
+}) {
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const search = async (q: string) => {
+    onChange(q)
+    if (q.length < 2) { setSuggestions([]); setOpen(false); return }
+    const { data } = await supabase.from('crm_clients')
+      .select('id, solicitante, razon_social')
+      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
+      .limit(6)
+    setSuggestions(data ?? [])
+    setOpen(true)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+        placeholder="Buscar por nombre o numero de cliente..."
+        value={value}
+        onChange={e => search(e.target.value)}
+        onFocus={() => value.length >= 2 && setOpen(true)}
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-full max-h-48 overflow-y-auto mt-1">
+          {suggestions.map(c => (
+            <button key={c.id} type="button"
+              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
+              onMouseDown={() => {
+                onSelect(c.id, c.solicitante)
+                setOpen(false)
+              }}>
+              <span className="font-semibold text-gray-800">{c.solicitante}</span>
+              {c.razon_social && <span className="text-gray-400 ml-2">{c.razon_social}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function MscNewPage() {
   const nav = useNavigate()
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
-    oficina_ventas: '',
     motivo: '',
     descripcion: '',
     destinatario_tipo: 'cliente',
     destinatario_nombre: '',
+    solicitante: '',
+    client_id: '',
   })
   const [rows, setRows] = useState<ItemRow[]>([emptyRow()])
   const [pasteMode, setPasteMode] = useState(false)
@@ -45,46 +182,73 @@ export default function MscNewPage() {
       if (key === 'cantidad_pedida' || key === 'precio_unitario') {
         const cant = parseFloat(key === 'cantidad_pedida' ? val : r.cantidad_pedida) || 0
         const precio = parseFloat(key === 'precio_unitario' ? val : r.precio_unitario) || 0
-        updated.total = cant && precio ? String(cant * precio) : ''
+        updated.total = cant && precio ? String((cant * precio).toFixed(2)) : ''
       }
       return updated
     }))
   }
 
+  const setRowField = (i: number, codigo: string, descripcion: string) => {
+    setRows(prev => prev.map((r, j) => j === i ? { ...r, codigo, descripcion } : r))
+  }
+
+  // Parsear Excel con columnas combinadas
+  // Código=A(0), Artículo=D(3), Cantidad=M(12), Precio=O(14), Total=R(17)
   const parsePaste = (text: string) => {
     const lines = text.trim().split('\n').filter(Boolean)
     if (!lines.length) return
+
+    // Detectar si tiene encabezado
     const firstCells = lines[0].split('\t')
-    const hasHeader = isNaN(parseFloat(firstCells[0])) && firstCells[0].length < 20
+    const firstVal = firstCells[0]?.trim().toLowerCase()
+    const hasHeader = firstVal === 'código' || firstVal === 'codigo' || firstVal === 'code' ||
+      (isNaN(parseFloat(firstVal)) && firstVal.length < 20)
     const dataLines = hasHeader ? lines.slice(1) : lines
+
     const parsed: ItemRow[] = dataLines.map(line => {
-      const cells = line.split('\t').map(c => c.trim().replace(/[$,]/g, ''))
-      const cant = parseFloat(cells[2]) || 0
-      const precio = parseFloat(cells[3]) || 0
+      const cells = line.split('\t').map(c => c.trim().replace(/[$,\s]/g, ''))
+      const codigo          = cells[0]  ?? ''    // A = índice 0
+      const descripcion     = cells[3]  ?? ''    // D = índice 3
+      const cantidad_pedida = cells[12] ?? ''    // M = índice 12
+      const precio_unitario = cells[14] ?? ''    // O = índice 14
+      const total_raw       = cells[17] ?? ''    // R = índice 17
+
+      const cant   = parseFloat(cantidad_pedida) || 0
+      const precio = parseFloat(precio_unitario) || 0
+      const total  = parseFloat(total_raw) || (cant && precio ? cant * precio : 0)
+
       return {
-        codigo:          cells[0] ?? '',
-        descripcion:     cells[1] ?? '',
-        cantidad_pedida: cells[2] ?? '',
-        precio_unitario: cells[3] ?? '',
-        total:           cells[4] ?? (cant && precio ? String(cant * precio) : ''),
+        codigo,
+        descripcion,
+        cantidad_pedida,
+        precio_unitario,
+        total: total ? String(total.toFixed(2)) : '',
       }
-    }).filter(r => r.codigo)
+    }).filter(r => r.codigo && r.codigo.length > 0)
+
     if (parsed.length > 0) {
       setRows(parsed); setPasteMode(false); setPasteText('')
-      toast.success(`${parsed.length} materiales importados`)
+      toast.success(`${parsed.length} material(es) importado(s)`)
     } else {
-      toast.error('No se detectaron materiales')
+      toast.error('No se detectaron materiales. Verifica el formato.')
     }
   }
 
   const save = async (estatus: 'borrador' | 'enviada') => {
     const validRows = rows.filter(r => r.codigo && r.cantidad_pedida)
     if (validRows.length === 0) return toast.error('Agrega al menos un material')
-    if (!form.oficina_ventas) return toast.error('La oficina de ventas es obligatoria')
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const { data: sol, error } = await supabase.from('msc_solicitudes').insert({
-      ...form, estatus, created_by: user?.id,
+      fecha:               form.fecha,
+      motivo:              form.motivo || null,
+      descripcion:         form.descripcion || null,
+      destinatario_tipo:   form.destinatario_tipo,
+      destinatario_nombre: form.destinatario_nombre || null,
+      solicitante:         form.solicitante || null,
+      client_id:           form.client_id || null,
+      estatus,
+      created_by: user?.id,
     }).select().single()
     if (error || !sol) { toast.error(error?.message ?? 'Error'); setSaving(false); return }
     await supabase.from('msc_items').insert(
@@ -107,16 +271,25 @@ export default function MscNewPage() {
     const materiales = validRows.map(r =>
       `- ${r.codigo} ${r.descripcion} x${r.cantidad_pedida}${r.precio_unitario ? ` @ $${r.precio_unitario}` : ''}`
     ).join('\n')
-    const subject = encodeURIComponent(`Solicitud Mercancia Sin Cargo - ${form.oficina_ventas} - ${form.fecha}`)
+    const subject = encodeURIComponent(`Solicitud Mercancia Sin Cargo - ${form.fecha}`)
     const body = encodeURIComponent(
       `Estimados,\n\nSe solicita autorizacion para mercancia sin cargo:\n\n` +
-      `Fecha: ${form.fecha}\nOficina: ${form.oficina_ventas}\nMotivo: ${form.motivo}\n` +
-      `Destinatario: ${form.destinatario_nombre}\n\nMateriales:\n${materiales}\n\n` +
-      `${form.descripcion ? `Descripcion: ${form.descripcion}\n\n` : ''}` +
+      `Fecha: ${form.fecha}\n` +
+      `Solicitante: ${form.solicitante}\n` +
+      `Motivo: ${form.motivo}\n` +
+      `Para: ${form.destinatario_nombre}\n\n` +
+      `Materiales:\n${materiales}\n\n` +
+      `${form.descripcion ? `Descripcion:\n${form.descripcion}\n\n` : ''}` +
       `Quedo en espera de su autorizacion.\n\nSaludos`
     )
-    window.open(`mailto:?subject=${subject}&body=${body}`)
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
   }
+
+  const totalGeneral = rows.reduce((acc, r) => {
+    const cant = parseFloat(r.cantidad_pedida) || 0
+    const precio = parseFloat(r.precio_unitario) || 0
+    return acc + (parseFloat(r.total) || cant * precio)
+  }, 0)
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -124,6 +297,7 @@ export default function MscNewPage() {
         className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
         Volver a MSC
       </button>
+
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-xl font-bold text-gray-800">Nueva solicitud MSC</h1>
         <button onClick={openMail}
@@ -132,6 +306,7 @@ export default function MscNewPage() {
         </button>
       </div>
 
+      {/* Datos generales */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <h2 className="font-semibold text-gray-700 mb-4">Datos generales</h2>
         <div className="grid grid-cols-3 gap-4 mb-3">
@@ -142,20 +317,23 @@ export default function MscNewPage() {
               value={form.fecha} onChange={e => setForm(x => ({ ...x, fecha: e.target.value }))} />
           </div>
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Oficina de ventas *</label>
+            <label className="text-xs text-gray-500 block mb-1">Quien lo solicita</label>
             <input
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-              placeholder="Ej: 600 Chihuahua"
-              value={form.oficina_ventas} onChange={e => setForm(x => ({ ...x, oficina_ventas: e.target.value }))} />
+              placeholder="Nombre del solicitante"
+              value={form.solicitante}
+              onChange={e => setForm(x => ({ ...x, solicitante: e.target.value }))} />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Motivo</label>
             <input
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
               placeholder="Ej: Donativo, Muestra, Reposicion"
-              value={form.motivo} onChange={e => setForm(x => ({ ...x, motivo: e.target.value }))} />
+              value={form.motivo}
+              onChange={e => setForm(x => ({ ...x, motivo: e.target.value }))} />
           </div>
         </div>
+
         <div className="grid grid-cols-3 gap-4 mb-3">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Tipo destinatario</label>
@@ -169,24 +347,30 @@ export default function MscNewPage() {
             </select>
           </div>
           <div className="col-span-2">
-            <label className="text-xs text-gray-500 block mb-1">Nombre del destinatario</label>
-            <input
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-              placeholder="Nombre del cliente o colaborador"
+            <label className="text-xs text-gray-500 block mb-1">Destinatario</label>
+            <ClienteInput
               value={form.destinatario_nombre}
-              onChange={e => setForm(x => ({ ...x, destinatario_nombre: e.target.value }))} />
+              onChange={v => setForm(x => ({ ...x, destinatario_nombre: v, client_id: '' }))}
+              onSelect={(id, nombre) => setForm(x => ({ ...x, destinatario_nombre: nombre, client_id: id }))}
+            />
+            {form.client_id && (
+              <p className="text-xs text-teal-600 font-medium mt-1">Cliente vinculado</p>
+            )}
           </div>
         </div>
+
         <div>
           <label className="text-xs text-gray-500 block mb-1">Descripcion / justificacion</label>
-          <textarea
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 h-16 resize-none"
-            placeholder="Cuerpo del correo o descripcion del motivo..."
+          <AutoTextarea
             value={form.descripcion}
-            onChange={e => setForm(x => ({ ...x, descripcion: e.target.value }))} />
+            onChange={v => setForm(x => ({ ...x, descripcion: v }))}
+            placeholder="Cuerpo del correo o descripcion del motivo..."
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+          />
         </div>
       </div>
 
+      {/* Materiales */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-semibold text-gray-700">
@@ -210,7 +394,9 @@ export default function MscNewPage() {
         {pasteMode ? (
           <div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs text-blue-700">
-              <strong>Formato esperado:</strong> Codigo | Articulo | Cantidad | Precio Unitario | Total
+              <p className="font-semibold mb-1">Formato esperado (columnas combinadas):</p>
+              <p className="font-mono">Col A: Codigo &nbsp;|&nbsp; Col D: Articulo &nbsp;|&nbsp; Col M: Cantidad &nbsp;|&nbsp; Col O: Precio Unitario &nbsp;|&nbsp; Col R: Total</p>
+              <p className="mt-1 text-blue-500">Puedes copiar con o sin encabezados — se detecta automaticamente.</p>
             </div>
             <textarea
               className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 text-sm font-mono outline-none focus:border-teal-400 h-40 resize-none"
@@ -245,22 +431,44 @@ export default function MscNewPage() {
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    {COLS.map(c => (
-                      <td key={c.key} className="border border-gray-200 p-0">
-                        <input
-                          type={c.type ?? 'text'}
-                          className={`${c.width} w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent`}
-                          value={row[c.key as keyof ItemRow]}
-                          onChange={e => updateRow(i, c.key, e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Tab' && i === rows.length - 1 && c.key === 'total') {
-                              e.preventDefault()
-                              setRows(prev => [...prev, emptyRow()])
-                            }
-                          }}
-                        />
-                      </td>
-                    ))}
+                    {/* Codigo con autocomplete */}
+                    <td className="border border-gray-200 p-0 w-28">
+                      <MaterialInput
+                        field="codigo"
+                        value={row.codigo}
+                        onChange={v => updateRow(i, 'codigo', v)}
+                        onSelect={(codigo, descripcion) => setRowField(i, codigo, descripcion)}
+                      />
+                    </td>
+                    {/* Descripcion con autocomplete */}
+                    <td className="border border-gray-200 p-0 w-64">
+                      <MaterialInput
+                        field="descripcion"
+                        value={row.descripcion}
+                        onChange={v => updateRow(i, 'descripcion', v)}
+                        onSelect={(codigo, descripcion) => setRowField(i, codigo, descripcion)}
+                      />
+                    </td>
+                    {/* Cantidad, precio, total */}
+                    {['cantidad_pedida','precio_unitario','total'].map(key => {
+                      const col = COLS.find(c => c.key === key)!
+                      return (
+                        <td key={key} className="border border-gray-200 p-0">
+                          <input
+                            type="number"
+                            className={`${col.width} w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent`}
+                            value={row[key as keyof ItemRow]}
+                            onChange={e => updateRow(i, key, e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Tab' && i === rows.length - 1 && key === 'total') {
+                                e.preventDefault()
+                                setRows(prev => [...prev, emptyRow()])
+                              }
+                            }}
+                          />
+                        </td>
+                      )
+                    })}
                     <td className="border border-gray-200 text-center">
                       {rows.length > 1 && (
                         <button onClick={() => setRows(prev => prev.filter((_, j) => j !== i))}
@@ -276,13 +484,9 @@ export default function MscNewPage() {
                 className="text-xs text-teal-600 hover:text-teal-700 font-medium">
                 + Agregar fila
               </button>
-              {rows.filter(r => r.precio_unitario && r.cantidad_pedida).length > 0 && (
-                <p className="text-xs text-gray-500 font-medium">
-                  Total: ${rows.reduce((acc, r) => {
-                    const cant = parseFloat(r.cantidad_pedida) || 0
-                    const precio = parseFloat(r.precio_unitario) || 0
-                    return acc + (parseFloat(r.total) || cant * precio)
-                  }, 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+              {totalGeneral > 0 && (
+                <p className="text-xs text-gray-600 font-semibold">
+                  Total: ${totalGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                 </p>
               )}
             </div>
@@ -290,7 +494,8 @@ export default function MscNewPage() {
         )}
       </div>
 
-      <div className="flex justify-between items-center">
+      {/* Acciones */}
+      <div className="flex justify-between items-center pb-8">
         <button onClick={() => nav('/msc')}
           className="border border-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50">
           Cancelar
