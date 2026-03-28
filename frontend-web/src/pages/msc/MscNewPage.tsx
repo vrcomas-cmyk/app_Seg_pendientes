@@ -51,6 +51,8 @@ function MaterialInput({ value, onChange, onSelect, field }: {
 }) {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
+  const inputRef = useRef<HTMLInputElement>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,6 +63,13 @@ function MaterialInput({ value, onChange, onSelect, field }: {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  const updateDropPos = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect()
+      setDropPos({ top: rect.bottom + window.scrollY, left: rect.left, width: Math.max(rect.width, 280) })
+    }
+  }
+
   const search = async (q: string) => {
     onChange(q)
     if (q.length < 2) { setSuggestions([]); setOpen(false); return }
@@ -70,29 +79,30 @@ function MaterialInput({ value, onChange, onSelect, field }: {
       .ilike(col, `%${q}%`)
       .limit(6)
     setSuggestions(data ?? [])
+    updateDropPos()
     setOpen(true)
   }
 
   return (
     <div ref={ref} className="relative w-full">
       <input
+        ref={inputRef}
         type="text"
         className="w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent"
         value={value}
         onChange={e => search(e.target.value)}
-        onFocus={() => value.length >= 2 && setOpen(true)}
+        onFocus={() => { if (value.length >= 2) { updateDropPos(); setOpen(true) } }}
       />
-      {open && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-72 max-h-48 overflow-y-auto">
+      {open && suggestions.length > 0 && typeof document !== 'undefined' && (
+        <div
+          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
           {suggestions.map(s => (
             <button key={s.material} type="button"
-              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
-              onMouseDown={() => {
-                onSelect(s.material, s.descripcion ?? '')
-                setOpen(false)
-              }}>
-              <span className="font-mono font-semibold text-gray-800">{s.material}</span>
-              <span className="text-gray-500 ml-2 truncate">{s.descripcion}</span>
+              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex gap-2"
+              onMouseDown={() => { onSelect(s.material, s.descripcion ?? ''); setOpen(false) }}>
+              <span className="font-mono font-semibold text-gray-800 flex-shrink-0">{s.material}</span>
+              <span className="text-gray-500 truncate">{s.descripcion}</span>
             </button>
           ))}
         </div>
@@ -273,16 +283,13 @@ export default function MscNewPage() {
     ).join('\n')
     const subject = encodeURIComponent(`Solicitud MSC - ${form.fecha}`)
     const body = encodeURIComponent(
-      `Solicitud de mercancia sin cargo\n\n` +
-      `Fecha: ${form.fecha}\n` +
-      `Solicitante: ${form.solicitante}\n` +
-      `Motivo: ${form.motivo}\n` +
-      `Para: ${form.destinatario_nombre}\n\n` +
-      `Materiales:\n${materiales}`
+      `Solicitud de mercancia sin cargo\n\nFecha: ${form.fecha}\nSolicitante: ${form.solicitante}\nMotivo: ${form.motivo}\nPara: ${form.destinatario_nombre}\n\nMateriales:\n${materiales}`
     )
-    const link = document.createElement('a')
-    link.href = `mailto:?subject=${subject}&body=${body}`
-    link.click()
+    const a = document.createElement('a')
+    a.href = `mailto:?subject=${subject}&body=${body}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   const totalGeneral = rows.reduce((acc, r) => {
