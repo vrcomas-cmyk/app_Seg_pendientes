@@ -64,9 +64,9 @@ function MaterialInput({ value, onChange, onSelect, field }: {
   const search = async (q: string) => {
     onChange(q)
     if (q.length < 2) { setSuggestions([]); setOpen(false); return }
-    const col = field === 'codigo' ? 'material' : 'description'
+    const col = field === 'codigo' ? 'material' : 'descripcion'
     const { data } = await supabase.from('catalog_materials')
-      .select('material, description')
+      .select('material, descripcion')
       .ilike(col, `%${q}%`)
       .limit(6)
     setSuggestions(data ?? [])
@@ -88,11 +88,11 @@ function MaterialInput({ value, onChange, onSelect, field }: {
             <button key={s.material} type="button"
               className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
               onMouseDown={() => {
-                onSelect(s.material, s.description ?? '')
+                onSelect(s.material, s.descripcion ?? '')
                 setOpen(false)
               }}>
               <span className="font-mono font-semibold text-gray-800">{s.material}</span>
-              <span className="text-gray-500 ml-2 truncate">{s.description}</span>
+              <span className="text-gray-500 ml-2 truncate">{s.descripcion}</span>
             </button>
           ))}
         </div>
@@ -269,20 +269,20 @@ export default function MscNewPage() {
   const openMail = () => {
     const validRows = rows.filter(r => r.codigo)
     const materiales = validRows.map(r =>
-      `- ${r.codigo} ${r.descripcion} x${r.cantidad_pedida}${r.precio_unitario ? ` @ $${r.precio_unitario}` : ''}`
+      `- ${r.codigo} ${r.descripcion} x${r.cantidad_pedida}`
     ).join('\n')
-    const subject = encodeURIComponent(`Solicitud Mercancia Sin Cargo - ${form.fecha}`)
+    const subject = encodeURIComponent(`Solicitud MSC - ${form.fecha}`)
     const body = encodeURIComponent(
-      `Estimados,\n\nSe solicita autorizacion para mercancia sin cargo:\n\n` +
+      `Solicitud de mercancia sin cargo\n\n` +
       `Fecha: ${form.fecha}\n` +
       `Solicitante: ${form.solicitante}\n` +
       `Motivo: ${form.motivo}\n` +
       `Para: ${form.destinatario_nombre}\n\n` +
-      `Materiales:\n${materiales}\n\n` +
-      `${form.descripcion ? `Descripcion:\n${form.descripcion}\n\n` : ''}` +
-      `Quedo en espera de su autorizacion.\n\nSaludos`
+      `Materiales:\n${materiales}`
     )
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
+    const link = document.createElement('a')
+    link.href = `mailto:?subject=${subject}&body=${body}`
+    link.click()
   }
 
   const totalGeneral = rows.reduce((acc, r) => {
