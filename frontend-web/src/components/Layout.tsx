@@ -14,7 +14,24 @@ export default function Layout() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? '')
+      const user = data.user
+      if (!user) return
+      setEmail(user.email ?? '')
+      // Guardar perfil para panel de admin
+      supabase.from('user_profiles').upsert(
+        { user_id: user.id, email: user.email },
+        { onConflict: 'user_id' }
+      )
+      // Crear rol si no existe
+      supabase.from('user_roles')
+        .select('user_id').eq('user_id', user.id).single()
+        .then(({ data: roleData }) => {
+          if (!roleData) {
+            supabase.from('user_roles').insert({
+              user_id: user.id, role: 'user', modules: ['pendientes']
+            })
+          }
+        })
     })
   }, [])
 
