@@ -8,6 +8,7 @@ import { taskRoutes } from './routes/tasks'
 import { historyRoutes } from './routes/history'
 import { calendarRoutes } from './routes/calendar'
 import { attachmentRoutes } from './routes/attachments'
+import adminRoutes from './routes/admin'
 
 const app = Fastify({ logger: true })
 
@@ -52,7 +53,7 @@ async function main() {
   app.get('/', async () => ({ status: 'ok', version: '1.0.0' }))
 
   await app.register(taskRoutes, { prefix: '/api' })
-  app.register(adminRoutes, { prefix: '/api' })
+  await app.register(adminRoutes, { prefix: '/api' })
   await app.register(historyRoutes, { prefix: '/api' })
   await app.register(attachmentRoutes, { prefix: '/api' })
   await app.register(calendarRoutes, { prefix: '' })
