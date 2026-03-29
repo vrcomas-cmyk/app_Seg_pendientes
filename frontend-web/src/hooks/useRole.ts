@@ -19,7 +19,6 @@ export function useRole() {
       if (data) {
         setUserRole({ role: data.role, modules: data.modules ?? ['pendientes'] })
       } else {
-        // Usuario sin rol = solo pendientes
         setUserRole({ role: 'user', modules: ['pendientes'] })
       }
       setLoading(false)
