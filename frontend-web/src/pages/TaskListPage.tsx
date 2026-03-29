@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useRole } from '../hooks/useRole'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -45,25 +46,27 @@ export default function TaskListPage() {
   const [filter, setFilter] = useState<'todos' | 'alta' | 'media' | 'baja' | 'completados'>('todos')
   const [search, setSearch] = useState('')
 
+  const { isTeam } = useRole()
   const load = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
-
-    const teamIds: string[] = []
-    try {
-      const { data: ids } = await supabase.rpc('get_team_user_ids')
-      if (ids) teamIds.push(...ids)
-    } catch {}
-    const allIds = [...new Set([user.id, ...teamIds])]
-
-    const { data } = await supabase.from('tasks')
-      .select('*')
-      .in('created_by', allIds)
-      .order('due_date', { ascending: true })
+    let query = supabase.from('tasks').select('*').order('due_date', { ascending: true })
+    if (isTeam) {
+      const teamIds: string[] = []
+      try {
+        const { data: ids } = await supabase.rpc('get_team_user_ids')
+        if (ids) teamIds.push(...ids)
+      } catch {}
+      const allIds = [...new Set([user.id, ...teamIds])]
+      query = query.in('created_by', allIds)
+    } else {
+      query = query.eq('created_by', user.id)
+    }
+    const { data } = await query
     setTasks(data ?? [])
     setLoading(false)
-  }, [])
+  }, [isTeam])
 
   useEffect(() => { load() }, [load])
 
@@ -110,7 +113,7 @@ export default function TaskListPage() {
   ).length
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full max-w-4xl mx-auto pb-24 px-0 sm:px-0">
       {/* Header */}
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-2xl font-bold text-gray-800">Pendientes</h1>

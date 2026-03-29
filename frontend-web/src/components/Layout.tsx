@@ -3,93 +3,121 @@ import { supabase } from '../lib/supabase'
 import { useState, useEffect } from 'react'
 import GlobalSearch from './GlobalSearch'
 import { useAlerts } from '../hooks/useAlerts'
+import { useRole } from '../hooks/useRole'
 
 export default function Layout() {
   const [email, setEmail] = useState('')
-  const [isTeam, setIsTeam] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const alerts = useAlerts()
+  const { hasModule, isAdmin, loading: roleLoading } = useRole()
   const nav = useNavigate()
-
-  const TEAM_IDS = [
-    'd8c13368-736a-480b-ba9a-4145a308934b',
-    '9a38602f-7bcd-4c9b-b7bc-7c1c119cca5f',
-  ]
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
-      setIsTeam(TEAM_IDS.includes(data.user?.id ?? ''))
     })
   }, [])
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `text-sm ${isActive ? 'text-teal-600 font-semibold' : 'text-gray-500 hover:text-gray-700'}`
 
+  const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `block px-4 py-3 text-sm font-medium border-b border-gray-100 last:border-0 ${
+      isActive ? 'text-teal-600 bg-teal-50' : 'text-gray-700 hover:bg-gray-50'
+    }`
+
   const totalAlerts = alerts.offersStalled + alerts.followupsDue + alerts.materialsInTransit
+
+  if (roleLoading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-sm text-gray-400">Cargando...</div>
+    </div>
+  )
+
+  const navLinks = [
+    { to: '/tasks',   label: 'Pendientes', module: 'pendientes', always: true },
+    { to: '/crm',     label: 'CRM',        module: 'crm' },
+    { to: '/msc',     label: 'MSC',        module: 'msc' },
+    { to: '/catalog', label: 'Catalogo',   module: 'catalogo' },
+    { to: '/admin',   label: 'Admin',      module: 'admin' },
+  ].filter(l => l.always || hasModule(l.module))
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between gap-4">
+      <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-4 sticky top-0 z-30">
+        {/* Logo + links desktop */}
         <div className="flex items-center gap-5 overflow-x-auto flex-shrink-0">
           <span className="font-bold text-teal-600 text-lg flex-shrink-0">Pendientes</span>
-          <NavLink to="/tasks"     className={linkClass}>Pendientes</NavLink>
-          <NavLink to="/crm"       className={linkClass}>CRM</NavLink>
-          <NavLink to="/msc"       className={linkClass}>MSC</NavLink>
-          <NavLink to="/catalog"   className={linkClass}>Catálogo</NavLink>
-          {isTeam && <NavLink to="/admin" className={linkClass}>Admin</NavLink>}
+          {/* Links solo en desktop */}
+          <div className="hidden sm:flex items-center gap-5">
+            {navLinks.map(l => (
+              <NavLink key={l.to} to={l.to} className={linkClass}>{l.label}</NavLink>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {/* Búsqueda global */}
-          <GlobalSearch />
+        {/* Derecha */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Busqueda — oculta en mobile */}
+          <div className="hidden sm:block">
+            <GlobalSearch />
+          </div>
 
-          {/* Campana de alertas */}
-          {totalAlerts > 0 && (
-            <div className="relative">
-              <button
-                onClick={() => nav('/crm/offers')}
-                className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition"
-                title="Ver alertas">
-                <span className="text-lg">🔔</span>
-                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
-                  {totalAlerts > 9 ? '9+' : totalAlerts}
-                </span>
-              </button>
-
-              {/* Tooltip con detalle */}
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl border border-gray-200 shadow-lg z-50 p-3 hidden group-hover:block">
-                {alerts.offersStalled > 0 && (
-                  <div className="flex justify-between items-center py-1 text-sm">
-                    <span className="text-gray-600">Ofertas sin movimiento</span>
-                    <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full text-xs font-medium">{alerts.offersStalled}</span>
-                  </div>
-                )}
-                {alerts.followupsDue > 0 && (
-                  <div className="flex justify-between items-center py-1 text-sm">
-                    <span className="text-gray-600">Seguimientos vencidos</span>
-                    <span className="bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full text-xs font-medium">{alerts.followupsDue}</span>
-                  </div>
-                )}
-                {alerts.materialsInTransit > 0 && (
-                  <div className="flex justify-between items-center py-1 text-sm">
-                    <span className="text-gray-600">Materiales en tránsito</span>
-                    <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs font-medium">{alerts.materialsInTransit}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* Alertas */}
+          {totalAlerts > 0 && hasModule('crm') && (
+            <button onClick={() => nav('/crm/offers')}
+              className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition">
+              <span className="text-lg">🔔</span>
+              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {totalAlerts > 9 ? '9+' : totalAlerts}
+              </span>
+            </button>
           )}
 
-          <NavLink to="/profile" className={linkClass}>
+          {/* Usuario — oculto en mobile */}
+          <NavLink to="/profile" className={`hidden sm:block text-sm text-gray-500 hover:text-gray-700`}>
             {email ? email.split('@')[0] : 'Mi cuenta'}
           </NavLink>
           <button onClick={() => supabase.auth.signOut()}
-            className="text-sm text-gray-400 hover:text-gray-600">
+            className="hidden sm:block text-sm text-gray-400 hover:text-gray-600">
             Salir
+          </button>
+
+          {/* Hamburguesa — solo mobile */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="sm:hidden flex flex-col gap-1.5 p-2 rounded-lg hover:bg-gray-100 transition"
+            aria-label="Menu">
+            <span className={`block w-5 h-0.5 bg-gray-600 transition-transform ${menuOpen ? 'rotate-45 translate-y-2' : ''}`} />
+            <span className={`block w-5 h-0.5 bg-gray-600 transition-opacity ${menuOpen ? 'opacity-0' : ''}`} />
+            <span className={`block w-5 h-0.5 bg-gray-600 transition-transform ${menuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
           </button>
         </div>
       </nav>
-      <main className="flex-1 p-6">
+
+      {/* Menu mobile desplegable */}
+      {menuOpen && (
+        <div className="sm:hidden bg-white border-b border-gray-200 shadow-lg z-20">
+          {navLinks.map(l => (
+            <NavLink key={l.to} to={l.to} className={mobileLinkClass}
+              onClick={() => setMenuOpen(false)}>
+              {l.label}
+            </NavLink>
+          ))}
+          <div className="border-t border-gray-100">
+            <NavLink to="/profile" className={mobileLinkClass} onClick={() => setMenuOpen(false)}>
+              {email ? email.split('@')[0] : 'Mi cuenta'}
+            </NavLink>
+            <button
+              onClick={() => { supabase.auth.signOut(); setMenuOpen(false) }}
+              className="block w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 font-medium">
+              Salir
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 p-3 sm:p-6">
         <Outlet />
       </main>
     </div>

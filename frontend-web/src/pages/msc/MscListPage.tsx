@@ -49,7 +49,7 @@ export default function MscListPage() {
   const completadas = solicitudes.filter(s => s.estatus === 'completada').length
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Mercancia Sin Cargo</h1>

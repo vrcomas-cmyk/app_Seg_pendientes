@@ -24,6 +24,7 @@ import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CrmVentaPage from './pages/crm/CrmVentaPage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
+import RouteGuard from './components/RouteGuard'
 import MscListPage from './pages/msc/MscListPage'
 import MscNewPage from './pages/msc/MscNewPage'
 import MscDetailPage from './pages/msc/MscDetailPage'
@@ -59,7 +60,7 @@ export default function App() {
         <Route path="/tasks/new" element={<NewTaskPage />} />
         <Route path="/tasks/:id" element={<TaskDetailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/crm" element={<CrmListPage />} />
+        <Route path="/crm" element={<RouteGuard module="crm"><CrmListPage /></RouteGuard>} />
         <Route path="/crm/import" element={<CrmImportPage />} />
         <Route path="/crm/new" element={<CrmNewClientPage />} />
         <Route path="/crm/:id" element={<CrmClientPage />} />
@@ -75,9 +76,9 @@ export default function App() {
         <Route path="/crm/items" element={<CrmOfferItemsTrackingPage />} />
         <Route path="/crm/:clientId/offer/:offerId" element={<CrmOfferPage />} />
         <Route path="/crm/:clientId/venta" element={<CrmVentaPage />} />
-        <Route path="/catalog" element={<CatalogPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/msc" element={<MscListPage />} />
+        <Route path="/catalog" element={<RouteGuard module="catalogo"><CatalogPage /></RouteGuard>} />
+        <Route path="/admin" element={<RouteGuard module="admin"><AdminPage /></RouteGuard>} />
+        <Route path="/msc" element={<RouteGuard module="msc"><MscListPage /></RouteGuard>} />
         <Route path="/msc/nueva" element={<MscNewPage />} />
         <Route path="/msc/inventario" element={<MscInventoryPage />} />
         <Route path="/msc/:id" element={<MscDetailPage />} />
