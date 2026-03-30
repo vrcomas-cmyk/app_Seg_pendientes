@@ -13,12 +13,14 @@ const ESTATUS_COLOR: Record<string, string> = {
   disponible:        'bg-indigo-100 text-indigo-700',
   completado:        'bg-green-100 text-green-700',
   cancelado:         'bg-gray-100 text-gray-400',
+  pendiente_solicitar: 'bg-purple-100 text-purple-700',
 }
 
-const ACTIVE_ESTATUS = ['solicitado','en_transito','recibido_parcial','recibido_cedis','ingresado_almacen','disponible']
+const ACTIVE_ESTATUS = ['pendiente_solicitar','solicitado','en_transito','recibido_parcial','recibido_cedis','ingresado_almacen','disponible']
 const DONE_ESTATUS   = ['completado','cancelado']
 
 const ESTATUS_OPTIONS = [
+  { value: 'pendiente_solicitar', label: 'Pendiente de solicitar' },
   { value: 'solicitado',        label: 'Solicitado' },
   { value: 'en_transito',       label: 'En tránsito' },
   { value: 'recibido_parcial',  label: 'Recibido parcial' },
@@ -43,6 +45,7 @@ interface CedisRequest {
   cantidad_pendiente: number
   um: string
   lote: string
+  fecha_solicitud: string
   fecha_caducidad: string
   estatus: string
   comentarios: string
@@ -211,6 +214,31 @@ export default function CrmMaterialsTrackingPage() {
     load()
   }
 
+  const copiarPendientesExcel = () => {
+    const pendientes = requests.filter(r => r.estatus === 'pendiente_solicitar')
+    if (pendientes.length === 0) return toast.error('No hay materiales pendientes de solicitar')
+    const header = ['Fecha solicitud','Centro Origen','Almacen Origen','Centro Destino','Almacen Destino','Codigo','Descripcion','Cantidad','UM','Lote','Fecha Caducidad','','','Estatus','Comentarios','Pedido'].join('\t')
+    const rows = pendientes.map(r => [
+      r.fecha_solicitud ?? '',
+      r.centro_origen ?? '',
+      r.almacen_origen ?? '',
+      r.centro_destino ?? '',
+      r.almacen_destino ?? '',
+      r.codigo ?? '',
+      r.descripcion ?? '',
+      r.cantidad ?? '',
+      r.um ?? '',
+      r.lote ?? '',
+      r.fecha_caducidad ?? '',
+      '', '',
+      'Pendiente de solicitar',
+      r.comentarios ?? '',
+      r.crm_orders?.numero_pedido ?? '',
+    ].join('\t')).join('\n')
+    navigator.clipboard.writeText(header + '\n' + rows)
+    toast.success(`${pendientes.length} material(es) copiados al portapapeles`)
+  }
+
   const activeCount  = requests.filter(r => ACTIVE_ESTATUS.includes(r.estatus)).length
   const doneCount    = requests.filter(r => DONE_ESTATUS.includes(r.estatus)).length
 
@@ -234,6 +262,10 @@ export default function CrmMaterialsTrackingPage() {
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 w-56"
             placeholder="Buscar material, pedido, cliente..."
             value={searchFilter} onChange={e => setSearchFilter(e.target.value)} />
+          <button onClick={copiarPendientesExcel}
+            className="border border-purple-300 text-purple-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-50">
+            Copiar pendientes Excel
+          </button>
           <button onClick={() => setShowNewForm(true)}
             className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
             + Nueva solicitud CEDIS

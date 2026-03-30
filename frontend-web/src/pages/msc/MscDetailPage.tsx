@@ -35,6 +35,17 @@ export default function MscDetailPage() {
   })
   const [recepItems, setRecepItems] = useState<Record<string, string>>({})
 
+  const [showCedisModal, setShowCedisModal] = useState(false)
+  const [cedisHeader, setCedisHeader] = useState({
+    centro_origen: '', almacen_origen: '',
+    centro_destino: '', almacen_destino: '',
+    fecha_solicitud: new Date().toISOString().split('T')[0],
+  })
+  const [cedisRows, setCedisRows] = useState<Record<string, {
+    selected: boolean; cantidad: string; um: string; lote: string; fecha_caducidad: string
+  }>>({})
+  const [savingCedis, setSavingCedis] = useState(false)
+
   const load = useCallback(async () => {
     const [s, it, rec, sal, ev] = await Promise.all([
       supabase.from('msc_solicitudes').select('*').eq('id', id).single(),
@@ -192,6 +203,91 @@ export default function MscDetailPage() {
 
   const totalPedido = items.reduce((a, i) => a + (i.total ?? (i.cantidad_pedida * (i.precio_unitario ?? 0))), 0)
   const stepIdx = ESTATUS_FLOW.indexOf(sol.estatus)
+
+  const initCedisRows = () => {
+    const rows: Record<string, any> = {}
+    items.forEach(item => {
+      const yaRec = cantRecibida(item.id, item.codigo)
+      const pend = item.cantidad_pedida - yaRec
+      rows[item.id] = {
+        selected: pend > 0,
+        cantidad: String(pend > 0 ? pend : item.cantidad_pedida),
+        um: item.um ?? '',
+        lote: '',
+        fecha_caducidad: '',
+      }
+    })
+    setCedisRows(rows)
+    setShowCedisModal(true)
+  }
+
+  const copiarCedisExcel = () => {
+    const selected = items.filter(i => cedisRows[i.id]?.selected)
+    if (selected.length === 0) return toast.error('Selecciona al menos un material')
+    const header = ['Fecha solicitud','Centro Origen','Almacen Origen','Centro Destino','Almacen Destino','Codigo','Descripcion','Cantidad','UM','Lote','Fecha Caducidad','','','Estatus','Comentarios','Pedido'].join('\t')
+    const rows = selected.map(item => {
+      const r = cedisRows[item.id]
+      return [
+        cedisHeader.fecha_solicitud,
+        cedisHeader.centro_origen,
+        cedisHeader.almacen_origen,
+        cedisHeader.centro_destino,
+        cedisHeader.almacen_destino,
+        item.codigo,
+        item.descripcion ?? '',
+        r.cantidad,
+        r.um,
+        r.lote,
+        r.fecha_caducidad,
+        '', '',
+        'Pendiente de solicitar',
+        '',
+        sol.numero_pedido_sap ?? '',
+      ].join('\t')
+    }).join('\n')
+    navigator.clipboard.writeText(header + '\n' + rows)
+    toast.success('Copiado al portapapeles — pega en Excel con Ctrl+V')
+  }
+
+  const guardarCedis = async () => {
+    const selected = items.filter(i => cedisRows[i.id]?.selected)
+    if (selected.length === 0) return toast.error('Selecciona al menos un material')
+    if (!cedisHeader.centro_origen || !cedisHeader.centro_destino)
+      return toast.error('Centro origen y destino son obligatorios')
+    setSavingCedis(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    for (const item of selected) {
+      const r = cedisRows[item.id]
+      const { data: req } = await supabase.from('crm_cedis_requests').insert({
+        msc_solicitud_id:   id,
+        fecha_solicitud:    cedisHeader.fecha_solicitud,
+        centro_origen:      cedisHeader.centro_origen,
+        almacen_origen:     cedisHeader.almacen_origen || null,
+        centro_destino:     cedisHeader.centro_destino,
+        almacen_destino:    cedisHeader.almacen_destino || null,
+        codigo:             item.codigo,
+        descripcion:        item.descripcion,
+        cantidad:           parseFloat(r.cantidad),
+        um:                 r.um || null,
+        lote:               r.lote || null,
+        fecha_caducidad:    r.fecha_caducidad || null,
+        estatus:            'pendiente_solicitar',
+        comentarios:        `MSC ${sol.numero_pedido_sap ?? id}`,
+        cantidad_recibida:  0,
+        cantidad_pendiente: parseFloat(r.cantidad),
+        created_by:         user?.id,
+      }).select('id').single()
+      if (req) {
+        await supabase.from('crm_cedis_history').insert({
+          request_id: req.id, estatus_nuevo: 'pendiente_solicitar',
+          comentario: 'Creado desde MSC', created_by: user?.id,
+        })
+      }
+    }
+    toast.success(`${selected.length} material(es) agregados a CEDIS como pendientes`)
+    setShowCedisModal(false)
+    setSavingCedis(false)
+  }
 
   return (
     <div className="w-full max-w-5xl mx-auto">
@@ -395,10 +491,10 @@ export default function MscDetailPage() {
                 </button>
                 {/* Solo admin y gerente ven CEDIS */}
                 {canSeeCedis && (
-                  <Link to="/crm/materials"
-                    className="border border-amber-300 text-amber-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-50 min-h-[44px] flex items-center">
+                  <button onClick={initCedisRows}
+                    className="border border-amber-300 text-amber-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-50 min-h-[44px]">
                     Solicitar traslado CEDIS
-                  </Link>
+                  </button>
                 )}
               </div>
             </div>
@@ -567,6 +663,101 @@ export default function MscDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Modal CEDIS */}
+      {showCedisModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-start justify-center pt-6 px-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-4xl max-h-screen overflow-y-auto">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Solicitar traslado CEDIS</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Selecciona materiales y genera el archivo para planeacion</p>
+              </div>
+              <button onClick={() => setShowCedisModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">x</button>
+            </div>
+            <div className="p-6">
+              {/* Cabecera */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                {[
+                  { label: 'Fecha solicitud', key: 'fecha_solicitud', type: 'date' },
+                  { label: 'Centro Origen *', key: 'centro_origen' },
+                  { label: 'Almacen Origen', key: 'almacen_origen' },
+                  { label: 'Centro Destino *', key: 'centro_destino' },
+                  { label: 'Almacen Destino', key: 'almacen_destino' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label className="text-xs text-gray-500 block mb-1">{f.label}</label>
+                    <input type={f.type ?? 'text'}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                      value={cedisHeader[f.key as keyof typeof cedisHeader]}
+                      onChange={e => setCedisHeader(x => ({ ...x, [f.key]: e.target.value }))} />
+                  </div>
+                ))}
+              </div>
+
+              {/* Tabla de materiales */}
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-2 border border-gray-200 w-8"></th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold">Codigo</th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold">Descripcion</th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold w-20">Cantidad</th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold w-16">UM</th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold w-28">Lote</th>
+                      <th className="px-3 py-2 border border-gray-200 text-left text-gray-500 font-semibold w-32">Caducidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(item => {
+                      const r = cedisRows[item.id] ?? { selected: false, cantidad: '', um: '', lote: '', fecha_caducidad: '' }
+                      return (
+                        <tr key={item.id} className={r.selected ? 'bg-amber-50' : 'bg-white'}>
+                          <td className="px-3 py-2 border border-gray-200 text-center">
+                            <input type="checkbox" checked={r.selected}
+                              onChange={e => setCedisRows(prev => ({ ...prev, [item.id]: { ...prev[item.id], selected: e.target.checked } }))} />
+                          </td>
+                          <td className="px-3 py-2 border border-gray-200 font-mono font-semibold text-gray-800">{item.codigo}</td>
+                          <td className="px-3 py-2 border border-gray-200 text-gray-600 max-w-48 truncate">{item.descripcion}</td>
+                          {['cantidad','um','lote','fecha_caducidad'].map(field => (
+                            <td key={field} className="border border-gray-200 p-0">
+                              <input
+                                type={field === 'fecha_caducidad' ? 'date' : field === 'cantidad' ? 'number' : 'text'}
+                                className="w-full px-2 py-1.5 text-xs outline-none focus:bg-amber-50 bg-transparent"
+                                value={r[field as keyof typeof r] as string}
+                                onChange={e => setCedisRows(prev => ({ ...prev, [item.id]: { ...prev[item.id], [field]: e.target.value } }))}
+                                disabled={!r.selected}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex gap-2 flex-wrap justify-between">
+                <button onClick={copiarCedisExcel}
+                  className="bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 min-h-[44px]">
+                  Copiar para Excel
+                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowCedisModal(false)}
+                    className="border border-gray-200 text-gray-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 min-h-[44px]">
+                    Cancelar
+                  </button>
+                  <button onClick={guardarCedis} disabled={savingCedis}
+                    className="bg-amber-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50 min-h-[44px]">
+                    {savingCedis ? 'Guardando...' : 'Guardar como pendiente de solicitar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Salidas con evidencia por salida */}
       {salidas.length > 0 && (

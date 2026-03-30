@@ -99,34 +99,60 @@ export default function CrmVentasPage() {
       cantidad: String(parsed.cantidad_ofertada ?? ''), um: parsed.um ?? '', comentarios: '' })
   }
 
+
   const saveUpdate = async () => {
     if (!activeItem) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const updates: any = { estatus: newEstatus }
-    if (newFactura) { updates.numero_factura = newFactura; updates.fecha_factura = new Date().toISOString().split('T')[0] }
-    if (newFolio)   { updates.folio_entrega_salida = newFolio; updates.fecha_entrega_salida = new Date().toISOString().split('T')[0] }
-    if (newEstatus === 'entregado') {
-      updates.entregado_cliente = true
-      updates.fecha_confirmacion_entrega = new Date().toISOString().split('T')[0]
-    }
-    await supabase.from('crm_offer_items').update(updates).eq('id', activeItem.id)
-    await supabase.from('crm_offer_item_history').insert({
-      item_id: activeItem.id, estatus_anterior: activeItem.estatus,
-      estatus_nuevo: newEstatus, comentario: newComentario || null, created_by: user?.id,
+    await supabase.from("crm_offer_items").update({
+      estatus:              newEstatus || activeItem.estatus,
+      folio_entrega_salida: newFolio || null,
+      numero_factura:       newFactura || null,
+      fecha_confirmacion_entrega: newEstatus === "facturado" ? new Date().toISOString().split("T")[0] : null,
+    }).eq("id", activeItem.id)
+    await supabase.from("crm_offer_item_history").insert({
+      item_id:          activeItem.id,
+      estatus_anterior: activeItem.estatus,
+      estatus_nuevo:    newEstatus || activeItem.estatus,
+      comentario:       newComentario || null,
+      created_by:       user?.id,
     })
-    toast.success('Venta actualizada')
-    setNewComentario('')
+    toast.success("Cambios guardados")
     await load()
-    const { data: updated } = await supabase.from('crm_offer_items')
-      .select('*, crm_offers(id, tipo, estatus, crm_clients(id, solicitante))')
-      .eq('id', activeItem.id).single()
+    const { data: updated } = await supabase.from("crm_offer_items")
+      .select("*, crm_offers(id, tipo, estatus, crm_clients(id, solicitante))")
+      .eq("id", activeItem.id).single()
     if (updated) {
-      const parsed = { ...updated, lotes: typeof updated.lotes === 'string' ? JSON.parse(updated.lotes) : (updated.lotes ?? []) }
+      const parsed = { ...updated, lotes: typeof updated.lotes === "string" ? JSON.parse(updated.lotes) : (updated.lotes ?? []) }
       setActiveItem(parsed)
-      setNewEstatus(parsed.estatus)
     }
     setSaving(false)
+  }
+
+  const generarCorreoAlmacen = () => {
+    if (!activeItem) return
+    const lotes = activeItem.lotes ?? []
+    const lotesStr = lotes.map((l: any) =>
+      `  - Lote: ${l.lote ?? '-'} / Cad: ${l.fecha_caducidad ?? '-'}`
+    ).join('\n')
+    const subject = encodeURIComponent(
+      `Surtido - ${activeItem.crm_offers?.crm_clients?.solicitante ?? ''} - Entrega ${activeItem.folio_entrega_salida ?? 'pendiente'}`
+    )
+    const body = encodeURIComponent(
+      `Estimado equipo de almacen,\n\n` +
+      `Se solicita surtir el siguiente material:\n\n` +
+      `Cliente: ${activeItem.crm_offers?.crm_clients?.solicitante ?? '-'}\n` +
+      `Razon Social: ${activeItem.crm_offers?.crm_clients?.razon_social ?? '-'}\n` +
+      `Entrega de Salida: ${activeItem.folio_entrega_salida ?? 'pendiente'}\n\n` +
+      `Material: ${activeItem.material}\n` +
+      `Descripcion: ${activeItem.descripcion ?? '-'}\n` +
+      `Cantidad: ${activeItem.cantidad_ofertada ?? '-'} ${activeItem.um ?? ''}\n` +
+      `Lotes:\n${lotesStr || '  Sin lote registrado'}\n\n` +
+      `Favor de confirmar el surtido.\n\nSaludos`
+    )
+    const a = document.createElement('a')
+    a.href = `mailto:?subject=${subject}&body=${body}`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
   }
 
   const saveCedis = async () => {
@@ -465,42 +491,75 @@ export default function CrmVentasPage() {
                 </div>
               )}
 
-              {/* Actualizar estatus */}
-              <div className="border-t border-gray-100 pt-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-700">Actualizar venta</p>
-                <div>
-                  <label className="text-gray-500 block mb-1">Estatus</label>
-                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white"
-                    value={newEstatus} onChange={e => setNewEstatus(e.target.value)}>
-                    {VENTA_ESTATUS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-gray-500 block mb-1">Folio de entrega de salida (SAP)</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                    placeholder="Ej: 80001234 (opcional)"
-                    value={newFolio} onChange={e => setNewFolio(e.target.value)} />
-                </div>
-                {(newEstatus === 'facturado' || newEstatus === 'entregado') && (
-                  <div>
-                    <label className="text-gray-500 block mb-1">Número de factura</label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                      placeholder="Ej: F-001234"
-                      value={newFactura} onChange={e => setNewFactura(e.target.value)} />
+              {/* Etapas de seguimiento */}
+              <div className="border-t border-gray-100 pt-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-700">Seguimiento</p>
+
+                {/* Disponibilidad */}
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">1. Disponibilidad en CEDIS</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setNewEstatus('asignado_pedido'); }}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium border transition ${newEstatus === 'asignado_pedido' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                      Disponible
+                    </button>
+                    <button
+                      onClick={() => { setNewEstatus('solicitud_cedis'); }}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium border transition ${newEstatus === 'solicitud_cedis' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                      Solicitar CEDIS
+                    </button>
                   </div>
-                )}
-                <div>
-                  <label className="text-gray-500 block mb-1">Comentario (opcional)</label>
+                </div>
+
+                {/* Delivery / Entrega de salida */}
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">2. Delivery (Entrega de salida)</p>
+                  <input
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 mb-2"
+                    placeholder="Folio entrega de salida SAP"
+                    value={newFolio} onChange={e => setNewFolio(e.target.value)} />
                   <textarea
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-14 resize-none outline-none focus:border-teal-400"
-                    placeholder="Notas del seguimiento..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs h-14 resize-none outline-none focus:border-teal-400"
+                    placeholder="Observaciones (requisitos, excepciones...)"
                     value={newComentario} onChange={e => setNewComentario(e.target.value)} />
                 </div>
+
+                {/* Aviso almacen */}
+                {(activeItem.folio_entrega_salida || newFolio) && (
+                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                    <p className="text-xs font-semibold text-blue-700 mb-2">3. Aviso a almacen</p>
+                    <button onClick={generarCorreoAlmacen}
+                      className="w-full border border-blue-300 text-blue-600 py-2 rounded-lg text-xs font-medium hover:bg-blue-100">
+                      Generar correo a almacen
+                    </button>
+                    <button onClick={() => setNewEstatus('surtido')}
+                      className={`w-full mt-2 py-2 rounded-lg text-xs font-medium border transition ${newEstatus === 'surtido' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                      Confirmar surtido
+                    </button>
+                  </div>
+                )}
+
+                {/* Facturacion */}
+                {(newEstatus === 'surtido' || activeItem.estatus === 'surtido' || activeItem.estatus === 'facturado') && (
+                  <div className="bg-green-50 rounded-xl p-3 border border-green-100">
+                    <p className="text-xs font-semibold text-green-700 mb-2">4. Facturacion</p>
+                    <input
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                      placeholder="Numero de factura"
+                      value={newFactura} onChange={e => setNewFactura(e.target.value)} />
+                    {newFactura && (
+                      <button onClick={() => setNewEstatus('facturado')}
+                        className={`w-full mt-2 py-2 rounded-lg text-xs font-medium border transition ${newEstatus === 'facturado' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                        Marcar como facturado
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <button onClick={saveUpdate} disabled={saving}
-                  className="w-full bg-teal-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-                  {saving ? 'Guardando...' : 'Guardar'}
+                  className="w-full bg-teal-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50 min-h-[44px]">
+                  {saving ? 'Guardando...' : 'Guardar cambios'}
                 </button>
               </div>
 
