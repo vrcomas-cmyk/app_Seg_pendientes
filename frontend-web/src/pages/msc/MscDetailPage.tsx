@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useRole } from '../../hooks/useRole'
 import toast from 'react-hot-toast'
 
 const ESTATUS_FLOW = ['borrador','enviada','aprobada','en_proceso','completada']
@@ -16,18 +17,19 @@ const ESTATUS_COLOR: Record<string, string> = {
 export default function MscDetailPage() {
   const { id } = useParams()
   const nav = useNavigate()
-  const [sol, setSol] = useState<any>(null)
-  const [items, setItems] = useState<any[]>([])
+  const { canSeeCedis } = useRole()
+  const [sol, setSol]               = useState<any>(null)
+  const [items, setItems]           = useState<any[]>([])
   const [recepciones, setRecepciones] = useState<any[]>([])
-  const [salidas, setSalidas] = useState<any[]>([])
+  const [salidas, setSalidas]       = useState<any[]>([])
   const [evidencias, setEvidencias] = useState<any[]>([])
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]         = useState(false)
   const [openAprobacion, setOpenAprobacion] = useState(false)
-  const [openFolio, setOpenFolio] = useState(false)
+  const [openFolio, setOpenFolio]   = useState(false)
   const [openRecepcion, setOpenRecepcion] = useState(false)
-  const [aprobForm, setAprobForm] = useState({ aprobado_por: '', notas_aprobacion: '' })
-  const [folioForm, setFolioForm] = useState({ numero_pedido_sap: '', fecha_pedido_sap: '', capturado_por: '' })
-  const [recepForm, setRecepForm] = useState({
+  const [aprobForm, setAprobForm]   = useState({ aprobado_por: '', notas_aprobacion: '' })
+  const [folioForm, setFolioForm]   = useState({ numero_pedido_sap: '', fecha_pedido_sap: '', capturado_por: '' })
+  const [recepForm, setRecepForm]   = useState({
     folio_entrega_salida: '', fecha_recepcion: new Date().toISOString().split('T')[0],
     tipo: 'usuario', receptor_nombre: '', notas: '',
   })
@@ -73,6 +75,31 @@ export default function MscDetailPage() {
       return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
     }, 0)
 
+  // Verificar si 100% recibido
+  const isTotalRecibido = items.length > 0 && items.every(item => {
+    const rec = cantRecibida(item.id, item.codigo)
+    return rec >= item.cantidad_pedida
+  })
+
+  // Verificar si todas las salidas tienen evidencia
+  const salidasSinEvidencia = salidas.filter(sal => {
+    const evSalida = evidencias.filter(e => e.salida_id === sal.id)
+    return evSalida.length === 0
+  })
+  const puedeCompletarse = isTotalRecibido && salidasSinEvidencia.length === 0 && salidas.length > 0
+
+  // Auto-cerrar si se cumplen condiciones
+  const checkAutoClose = useCallback(async () => {
+    if (!sol || sol.estatus !== 'en_proceso') return
+    if (puedeCompletarse) {
+      await supabase.from('msc_solicitudes').update({ estatus: 'completada' }).eq('id', id)
+      toast.success('Solicitud completada automaticamente')
+      load()
+    }
+  }, [sol, puedeCompletarse, id, load])
+
+  useEffect(() => { checkAutoClose() }, [checkAutoClose])
+
   const aprobar = async (estatus: 'aprobada' | 'rechazada') => {
     setSaving(true)
     await supabase.from('msc_solicitudes').update({
@@ -94,6 +121,25 @@ export default function MscDetailPage() {
     if (!recepForm.folio_entrega_salida) return toast.error('El folio de entrega de salida es obligatorio')
     const itemsValidos = items.filter(it => parseFloat(recepItems[it.id] ?? '0') > 0)
     if (itemsValidos.length === 0) return toast.error('Ingresa al menos una cantidad recibida')
+
+    // Validar exceso
+    const itemsExcedidos = itemsValidos.filter(it => {
+      const yaRec = cantRecibida(it.id, it.codigo)
+      const ahora = parseFloat(recepItems[it.id] ?? '0')
+      return (yaRec + ahora) > it.cantidad_pedida
+    })
+    if (itemsExcedidos.length > 0) {
+      const detalle = itemsExcedidos.map(it => {
+        const yaRec = cantRecibida(it.id, it.codigo)
+        const ahora = parseFloat(recepItems[it.id] ?? '0')
+        return `${it.codigo}: pedido ${it.cantidad_pedida}, ya recibido ${yaRec}, ahora ingresas ${ahora}`
+      }).join('\n')
+      const ok = window.confirm(
+        `Atencion: las siguientes cantidades exceden lo pedido:\n\n${detalle}\n\n¿Confirmar de todas formas?`
+      )
+      if (!ok) return
+    }
+
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const { data: rec } = await supabase.from('msc_recepciones').insert({
@@ -113,7 +159,7 @@ export default function MscDetailPage() {
     setSaving(false)
   }
 
-  const subirEvidencia = async (file: File, tipo: string) => {
+  const subirEvidencia = async (file: File, tipo: string, salidaId?: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     const ext = file.name.split('.').pop()
     const path = `msc/${id}/${Date.now()}.${ext}`
@@ -121,7 +167,9 @@ export default function MscDetailPage() {
     if (error) { toast.error('Error al subir archivo'); return }
     const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(path)
     await supabase.from('msc_evidencias').insert({
-      solicitud_id: id, url: publicUrl, nombre: file.name, tipo, created_by: user?.id,
+      solicitud_id: id,
+      salida_id: salidaId ?? null,
+      url: publicUrl, nombre: file.name, tipo, created_by: user?.id,
     })
     toast.success('Evidencia subida'); load()
   }
@@ -129,17 +177,15 @@ export default function MscDetailPage() {
   const openMail = () => {
     if (!sol) return
     const materiales = items.map(i =>
-      `- ${i.codigo} ${i.descripcion ?? ''} x${i.cantidad_pedida}${i.precio_unitario ? ` @ $${i.precio_unitario}` : ''}`
+      `- ${i.codigo} ${i.descripcion ?? ''} x${i.cantidad_pedida}`
     ).join('\n')
-    const subject = encodeURIComponent(`Solicitud MSC - ${sol.oficina_ventas} - ${sol.fecha}`)
+    const subject = encodeURIComponent(`Solicitud MSC - ${sol.fecha}`)
     const body = encodeURIComponent(
-      `Estimados,\n\nSe solicita autorizacion para mercancia sin cargo:\n\n` +
-      `Fecha: ${sol.fecha}\nOficina: ${sol.oficina_ventas}\nMotivo: ${sol.motivo ?? ''}\n` +
-      `Para: ${sol.destinatario_nombre ?? ''}\n\nMateriales:\n${materiales}\n\n` +
-      `${sol.descripcion ? `Descripcion:\n${sol.descripcion}\n\n` : ''}` +
-      `Quedo en espera de su autorizacion.\n\nSaludos`
+      `Estimados,\n\nSolicitud de mercancia sin cargo:\n\nFecha: ${sol.fecha}\nMotivo: ${sol.motivo ?? ''}\nPara: ${sol.destinatario_nombre ?? ''}\n\nMateriales:\n${materiales}`
     )
-    window.open(`mailto:?subject=${subject}&body=${body}`)
+    const a = document.createElement('a')
+    a.href = `mailto:?subject=${subject}&body=${body}`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
   }
 
   if (!sol) return <div className="text-sm text-gray-400 p-6">Cargando...</div>
@@ -148,15 +194,15 @@ export default function MscDetailPage() {
   const stepIdx = ESTATUS_FLOW.indexOf(sol.estatus)
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full max-w-5xl mx-auto">
       <button onClick={() => nav('/msc')}
-        className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
+        className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1 min-h-[44px]">
         Volver a MSC
       </button>
 
       {/* Header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-        <div className="flex justify-between items-start mb-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 mb-4">
+        <div className="flex justify-between items-start mb-4 flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-gray-800">
               {sol.numero_pedido_sap ? `Folio: ${sol.numero_pedido_sap}` : 'Solicitud MSC'}
@@ -165,42 +211,45 @@ export default function MscDetailPage() {
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ESTATUS_COLOR[sol.estatus]}`}>
                 {sol.estatus?.replace('_',' ')}
               </span>
-              {sol.oficina_ventas && <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">{sol.oficina_ventas}</span>}
               {sol.motivo && <span className="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">{sol.motivo}</span>}
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={openMail}
-              className="border border-blue-300 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-50">
-              Abrir correo
-            </button>
-            <Link to="/msc/inventario"
-              className="border border-teal-300 text-teal-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-50">
-              Ver inventario
-            </Link>
-          </div>
+          <button onClick={openMail}
+            className="border border-blue-300 text-blue-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-50 min-h-[40px]">
+            Abrir correo
+          </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 text-xs text-gray-500 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs text-gray-500 mb-4">
           <div><p className="text-gray-400">Fecha</p><p className="font-medium text-gray-700">{sol.fecha}</p></div>
-          <div><p className="text-gray-400">Destinatario</p><p className="font-medium text-gray-700">{sol.destinatario_nombre ?? '-'} ({sol.destinatario_tipo})</p></div>
+          <div><p className="text-gray-400">Para</p><p className="font-medium text-gray-700">{sol.destinatario_nombre ?? '-'}</p></div>
           <div><p className="text-gray-400">Aprobado por</p><p className="font-medium text-gray-700">{sol.aprobado_por ?? '-'}</p></div>
+          {sol.solicitante && <div><p className="text-gray-400">Solicitante</p><p className="font-medium text-gray-700">{sol.solicitante}</p></div>}
         </div>
         {sol.descripcion && (
           <p className="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3 border border-gray-100 mb-4">{sol.descripcion}</p>
         )}
 
+        {/* Aviso cierre pendiente */}
+        {sol.estatus === 'en_proceso' && isTotalRecibido && salidasSinEvidencia.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm text-yellow-700 font-medium">
+              Material al 100% recibido. Faltan evidencias en {salidasSinEvidencia.length} salida(s) para cerrar la solicitud.
+            </p>
+          </div>
+        )}
+
         {/* Stepper */}
-        <div className="flex items-center">
+        <div className="flex items-center overflow-x-auto">
           {ESTATUS_FLOW.map((e, i) => (
-            <div key={e} className="flex items-center flex-1 last:flex-none">
+            <div key={e} className="flex items-center flex-shrink-0">
               <div className={`text-xs font-medium px-2 py-1 rounded-lg whitespace-nowrap ${
                 i < stepIdx ? 'text-teal-600' : i === stepIdx ? 'bg-teal-600 text-white' : 'text-gray-300'
               }`}>
                 {i < stepIdx ? 'v ' : ''}{e.replace('_',' ')}
               </div>
               {i < ESTATUS_FLOW.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-1 ${i < stepIdx ? 'bg-teal-400' : 'bg-gray-200'}`} />
+                <div className={`w-4 h-0.5 mx-1 flex-shrink-0 ${i < stepIdx ? 'bg-teal-400' : 'bg-gray-200'}`} />
               )}
             </div>
           ))}
@@ -209,7 +258,7 @@ export default function MscDetailPage() {
 
       {/* Tabla materiales */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
-        <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+        <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
           <h2 className="font-semibold text-gray-700">Materiales</h2>
           {totalPedido > 0 && (
             <span className="text-xs text-gray-500">
@@ -235,7 +284,7 @@ export default function MscDetailPage() {
                 return (
                   <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
-                    <td className="px-3 py-2 text-gray-600 max-w-48 truncate">{item.descripcion ?? '-'}</td>
+                    <td className="px-3 py-2 text-gray-600 max-w-40 truncate">{item.descripcion ?? '-'}</td>
                     <td className="px-3 py-2 text-right font-medium text-gray-800">{item.cantidad_pedida}</td>
                     <td className="px-3 py-2 text-right text-blue-600 font-medium">{rec}</td>
                     <td className="px-3 py-2 text-right text-teal-600 font-medium">{ent}</td>
@@ -245,7 +294,7 @@ export default function MscDetailPage() {
                     <td className="px-3 py-2 text-right">
                       {pend > 0
                         ? <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">{pend} pend.</span>
-                        : <span className="text-gray-300">-</span>}
+                        : <span className="text-green-500 font-semibold">Completo</span>}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500">
                       {item.precio_unitario ? `$${Number(item.precio_unitario).toLocaleString('es-MX')}` : '-'}
@@ -265,13 +314,13 @@ export default function MscDetailPage() {
       {['enviada','borrador'].includes(sol.estatus) && (
         <div className="bg-white rounded-xl border border-gray-200 mb-4 overflow-hidden">
           <button onClick={() => setOpenAprobacion(!openAprobacion)}
-            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50">
+            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50 min-h-[56px]">
             <h2 className="font-semibold text-gray-700">Etapa 1 - Aprobacion</h2>
             <span className="text-gray-400 text-sm">{openAprobacion ? 'v' : '>'}</span>
           </button>
           {openAprobacion && (
             <div className="px-5 pb-5 border-t border-gray-100">
-              <div className="grid grid-cols-2 gap-3 mt-4 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 mb-3">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Aprobado por</label>
                   <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
@@ -289,11 +338,11 @@ export default function MscDetailPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => aprobar('aprobada')} disabled={saving}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                  className="bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 min-h-[44px]">
                   Aprobar
                 </button>
                 <button onClick={() => aprobar('rechazada')} disabled={saving}
-                  className="border border-red-300 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50">
+                  className="border border-red-300 text-red-500 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50 min-h-[44px]">
                   Rechazar
                 </button>
               </div>
@@ -306,7 +355,7 @@ export default function MscDetailPage() {
       {['aprobada','en_proceso'].includes(sol.estatus) && (
         <div className="bg-white rounded-xl border border-gray-200 mb-4 overflow-hidden">
           <button onClick={() => setOpenFolio(!openFolio)}
-            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50">
+            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50 min-h-[56px]">
             <div className="flex items-center gap-3">
               <h2 className="font-semibold text-gray-700">Etapa 2 - Folio SAP</h2>
               {sol.numero_pedido_sap && (
@@ -317,7 +366,7 @@ export default function MscDetailPage() {
           </button>
           {openFolio && (
             <div className="px-5 pb-5 border-t border-gray-100">
-              <div className="grid grid-cols-3 gap-3 mt-4 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 mb-3">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Numero de pedido SAP *</label>
                   <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
@@ -334,20 +383,23 @@ export default function MscDetailPage() {
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Capturado por</label>
                   <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                    placeholder="Nombre del capturista"
+                    placeholder="Nombre"
                     value={folioForm.capturado_por}
                     onChange={e => setFolioForm(x => ({ ...x, capturado_por: e.target.value }))} />
                 </div>
               </div>
-              <div className="flex gap-2 items-center">
+              <div className="flex gap-2 flex-wrap">
                 <button onClick={guardarFolio} disabled={saving}
-                  className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
+                  className="bg-teal-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50 min-h-[44px]">
                   Guardar folio
                 </button>
-                <Link to="/crm/materials"
-                  className="border border-amber-300 text-amber-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-50">
-                  Solicitar traslado CEDIS
-                </Link>
+                {/* Solo admin y gerente ven CEDIS */}
+                {canSeeCedis && (
+                  <Link to="/crm/materials"
+                    className="border border-amber-300 text-amber-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-50 min-h-[44px] flex items-center">
+                    Solicitar traslado CEDIS
+                  </Link>
+                )}
               </div>
             </div>
           )}
@@ -358,12 +410,17 @@ export default function MscDetailPage() {
       {sol.estatus === 'en_proceso' && (
         <div className="bg-white rounded-xl border border-gray-200 mb-4 overflow-hidden">
           <button onClick={() => setOpenRecepcion(!openRecepcion)}
-            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50">
-            <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-gray-700">Etapa 3 - Registrar recepcion</h2>
+            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50 min-h-[56px]">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="font-semibold text-gray-700">Etapa 3 - Recepciones</h2>
               {recepciones.length > 0 && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                   {recepciones.length} recepcion(es)
+                </span>
+              )}
+              {isTotalRecibido && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                  100% recibido
                 </span>
               )}
             </div>
@@ -371,6 +428,7 @@ export default function MscDetailPage() {
           </button>
           {openRecepcion && (
             <div className="px-5 pb-5 border-t border-gray-100">
+              {/* Recepciones anteriores */}
               {recepciones.length > 0 && (
                 <div className="mt-4 mb-4 space-y-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Recepciones anteriores</p>
@@ -389,143 +447,177 @@ export default function MscDetailPage() {
                   ))}
                 </div>
               )}
-              <div className="grid grid-cols-3 gap-3 mt-4 mb-3">
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Folio entrega de salida SAP *</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                    placeholder="Ej: 80001234"
-                    value={recepForm.folio_entrega_salida}
-                    onChange={e => setRecepForm(x => ({ ...x, folio_entrega_salida: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Fecha recepcion</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                    value={recepForm.fecha_recepcion}
-                    onChange={e => setRecepForm(x => ({ ...x, fecha_recepcion: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Tipo de entrega</label>
-                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white"
-                    value={recepForm.tipo}
-                    onChange={e => setRecepForm(x => ({ ...x, tipo: e.target.value }))}>
-                    <option value="usuario">Lo recibo yo (va a inventario)</option>
-                    <option value="cliente_directo">Directo al cliente</option>
-                  </select>
-                </div>
-                {recepForm.tipo === 'cliente_directo' && (
-                  <div className="col-span-3">
-                    <label className="text-xs text-gray-500 block mb-1">Nombre del receptor</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                      placeholder="Quien recibe el material"
-                      value={recepForm.receptor_nombre}
-                      onChange={e => setRecepForm(x => ({ ...x, receptor_nombre: e.target.value }))} />
-                  </div>
-                )}
-              </div>
 
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Cantidades recibidas</p>
-              <div className="overflow-x-auto mb-3">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200">Codigo</th>
-                      <th className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200">Articulo</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-semibold border-b border-gray-200">Pedido</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-semibold border-b border-gray-200">Ya recibido</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-semibold border-b border-gray-200 w-32">Recibo ahora *</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map(item => {
-                      const yaRec    = cantRecibida(item.id, item.codigo)
-                      const pendiente = item.cantidad_pedida - yaRec
-                      return (
-                        <tr key={item.id} className="border-b border-gray-100">
-                          <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
-                          <td className="px-3 py-2 text-gray-500 max-w-40 truncate">{item.descripcion}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{item.cantidad_pedida}</td>
-                          <td className="px-3 py-2 text-right text-blue-600">{yaRec}</td>
-                          <td className="px-3 py-2">
-                            <input type="number"
-                              className="w-full border border-teal-300 rounded-lg px-2 py-1 text-xs outline-none focus:border-teal-500 text-right"
-                              placeholder={String(pendiente)}
-                              value={recepItems[item.id] ?? ''}
-                              onChange={e => setRecepItems(prev => ({ ...prev, [item.id]: e.target.value }))}
-                              max={pendiente} />
-                          </td>
+              {/* Si ya se recibio todo, no mostrar formulario */}
+              {isTotalRecibido ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mt-4">
+                  <p className="text-sm text-green-700 font-medium">
+                    Todo el material ha sido recibido. No se pueden registrar mas recepciones.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 mb-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Folio entrega de salida SAP *</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                        placeholder="Ej: 80001234"
+                        value={recepForm.folio_entrega_salida}
+                        onChange={e => setRecepForm(x => ({ ...x, folio_entrega_salida: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Fecha recepcion</label>
+                      <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                        value={recepForm.fecha_recepcion}
+                        onChange={e => setRecepForm(x => ({ ...x, fecha_recepcion: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Tipo de entrega</label>
+                      <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white"
+                        value={recepForm.tipo}
+                        onChange={e => setRecepForm(x => ({ ...x, tipo: e.target.value }))}>
+                        <option value="usuario">Lo recibo yo</option>
+                        <option value="cliente_directo">Directo al cliente</option>
+                      </select>
+                    </div>
+                    {recepForm.tipo === 'cliente_directo' && (
+                      <div className="col-span-3">
+                        <label className="text-xs text-gray-500 block mb-1">Nombre del receptor</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                          placeholder="Quien recibe"
+                          value={recepForm.receptor_nombre}
+                          onChange={e => setRecepForm(x => ({ ...x, receptor_nombre: e.target.value }))} />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Cantidades recibidas</p>
+                  <div className="overflow-x-auto mb-3">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {['Codigo','Articulo','Pedido','Ya recibido','Recibo ahora *'].map(h => (
+                            <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                          ))}
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={guardarRecepcion} disabled={saving}
-                  className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-                  Registrar recepcion
-                </button>
-                <label className="cursor-pointer border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-                  Subir evidencia
-                  <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) subirEvidencia(f, 'recepcion') }} />
-                </label>
-              </div>
+                      </thead>
+                      <tbody>
+                        {items.map(item => {
+                          const yaRec    = cantRecibida(item.id, item.codigo)
+                          const pendiente = item.cantidad_pedida - yaRec
+                          if (pendiente <= 0) return null
+                          return (
+                            <tr key={item.id} className="border-b border-gray-100">
+                              <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
+                              <td className="px-3 py-2 text-gray-500 max-w-32 truncate">{item.descripcion}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{item.cantidad_pedida}</td>
+                              <td className="px-3 py-2 text-right text-blue-600">{yaRec}</td>
+                              <td className="px-3 py-2">
+                                <input type="number"
+                                  className="w-full border border-teal-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-500 text-right min-h-[36px]"
+                                  placeholder={String(pendiente)}
+                                  value={recepItems[item.id] ?? ''}
+                                  onChange={e => setRecepItems(prev => ({ ...prev, [item.id]: e.target.value }))} />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={guardarRecepcion} disabled={saving}
+                      className="bg-teal-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50 min-h-[44px]">
+                      Registrar recepcion
+                    </button>
+                    <label className="cursor-pointer border border-gray-200 text-gray-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 min-h-[44px] flex items-center">
+                      Subir evidencia recepcion
+                      <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) subirEvidencia(f, 'recepcion') }} />
+                    </label>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Evidencias */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+      {/* Evidencias generales */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 mb-4">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="font-semibold text-gray-700">Evidencias</h2>
-          <label className="cursor-pointer text-xs text-teal-600 hover:text-teal-700 font-medium border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50">
-            + Subir evidencia
+          <h2 className="font-semibold text-gray-700">Evidencias de solicitud</h2>
+          <label className="cursor-pointer text-xs text-teal-600 hover:text-teal-700 font-medium border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 min-h-[36px] flex items-center">
+            + Subir
             <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.xlsx"
               onChange={e => { const f = e.target.files?.[0]; if (f) subirEvidencia(f, 'solicitud') }} />
           </label>
         </div>
-        {evidencias.length === 0 && <p className="text-xs text-gray-400">Sin evidencias adjuntas aun.</p>}
-        {evidencias.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {evidencias.map(ev => (
-              <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
-                className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 text-teal-600 hover:text-teal-700 px-3 py-2 rounded-lg hover:border-teal-300 transition">
-                <span className="text-gray-400">{ev.tipo}</span>
-                <span className="max-w-32 truncate">{ev.nombre}</span>
-              </a>
-            ))}
-          </div>
+        {evidencias.filter(e => !e.salida_id).length === 0 && (
+          <p className="text-xs text-gray-400">Sin evidencias de solicitud.</p>
         )}
+        <div className="flex flex-wrap gap-2">
+          {evidencias.filter(e => !e.salida_id).map(ev => (
+            <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
+              className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 text-teal-600 px-3 py-2 rounded-lg hover:border-teal-300 transition min-h-[36px]">
+              <span className="text-gray-400">{ev.tipo}</span>
+              <span className="max-w-32 truncate">{ev.nombre}</span>
+            </a>
+          ))}
+        </div>
       </div>
 
-      {/* Salidas */}
+      {/* Salidas con evidencia por salida */}
       {salidas.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
-          <div className="px-5 py-3 border-b border-gray-100">
+          <div className="px-4 py-3 border-b border-gray-100">
             <h2 className="font-semibold text-gray-700">Salidas registradas</h2>
           </div>
           {salidas.map(sal => {
             const misSalItems = (sal.msc_salida_items ?? []).filter((si: any) => si.solicitud_id === id)
+            const evSalida = evidencias.filter(e => e.salida_id === sal.id)
+            const tieneEvidencia = evSalida.length > 0
             return (
-              <div key={sal.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
-                <div className="flex justify-between items-start mb-2">
+              <div key={sal.id} className="px-4 py-4 border-b border-gray-100 last:border-0">
+                <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">{sal.receptor_nombre}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-800">{sal.receptor_nombre}</p>
+                      {tieneEvidencia
+                        ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Evidencia OK</span>
+                        : <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Sin evidencia</span>
+                      }
+                    </div>
                     <p className="text-xs text-gray-400">{sal.receptor_tipo} · {sal.fecha_entrega}</p>
                   </div>
-                  {sal.evidencia_url && (
-                    <a href={sal.evidencia_url} target="_blank" rel="noreferrer"
-                      className="text-xs text-teal-600 hover:underline">Ver evidencia</a>
-                  )}
+                  {/* Subir evidencia por salida */}
+                  <label className="cursor-pointer border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 min-h-[36px] flex items-center">
+                    {tieneEvidencia ? 'Agregar otra evidencia' : '+ Subir evidencia *'}
+                    <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) subirEvidencia(f, 'entrega', sal.id)
+                      }} />
+                  </label>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 mb-2">
                   {misSalItems.map((si: any) => (
                     <span key={si.id} className="text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2 py-1 rounded-lg font-mono">
                       {si.codigo}: {si.cantidad_entregada}
                     </span>
                   ))}
                 </div>
+                {evSalida.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {evSalida.map(ev => (
+                      <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
+                        className="text-xs text-teal-600 hover:underline flex items-center gap-1 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
+                        <span>{ev.nombre}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}

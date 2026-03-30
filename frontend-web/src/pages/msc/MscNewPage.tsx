@@ -151,7 +151,7 @@ function ClienteInput({ value, onChange, onSelect }: {
         onFocus={() => value.length >= 2 && setOpen(true)}
       />
       {open && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-full max-h-48 overflow-y-auto mt-1">
+        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-48 overflow-y-auto mt-1" style={{ position: "absolute" }}>
           {suggestions.map(c => (
             <button key={c.id} type="button"
               className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"

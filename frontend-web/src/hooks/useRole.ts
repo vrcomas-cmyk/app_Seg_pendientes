@@ -26,9 +26,12 @@ export function useRole() {
     load()
   }, [])
 
-  const hasModule = (module: string) => userRole?.modules?.includes(module) ?? false
-  const isAdmin   = userRole?.role === 'admin'
-  const isTeam    = userRole?.role === 'team' || isAdmin
+  const hasModule  = (m: string)  => userRole?.modules?.includes(m) ?? false
+  const isAdmin    = userRole?.role === 'admin'
+  const isGerente  = userRole?.role === 'gerente'
+  const isEducador = userRole?.role === 'educador_clinico'
+  const isTeam     = isAdmin || isGerente
+  const canSeeCedis = isAdmin || isGerente
 
-  return { userRole, loading, hasModule, isAdmin, isTeam }
+  return { userRole, loading, hasModule, isAdmin, isGerente, isEducador, isTeam, canSeeCedis }
 }
