@@ -52,8 +52,10 @@ function MaterialInput({ value, onChange, onSelect, field }: {
 }) {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const inputRef = useRef<HTMLInputElement>(null)
   const ref = useRef<HTMLDivElement>(null)
-
+  const MAX_H = 220
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -61,9 +63,14 @@ function MaterialInput({ value, onChange, onSelect, field }: {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
-
-
-
+  const updatePos = () => {
+    if (!inputRef.current) return
+    const r = inputRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom - 8
+    const spaceAbove = r.top - 8
+    const above = spaceBelow < MAX_H && spaceAbove > spaceBelow
+    setPos({ top: above ? r.top - Math.min(MAX_H, spaceAbove) : r.bottom + 2, left: r.left, width: Math.max(r.width, 320) })
+  }
   const search = async (q: string) => {
     onChange(q)
     if (q.length < 2) { setSuggestions([]); setOpen(false); return }
@@ -73,26 +80,31 @@ function MaterialInput({ value, onChange, onSelect, field }: {
       .ilike(col, `%${q}%`)
       .limit(10)
     setSuggestions(data ?? [])
+    updatePos()
     setOpen(true)
   }
-
   return (
     <div ref={ref} className="relative w-full">
-      <input
-        type="text"
+      <input ref={inputRef} type="text"
         className="w-full px-2 py-1.5 text-xs outline-none focus:bg-teal-50 bg-transparent"
         value={value}
         onChange={e => search(e.target.value)}
-        onFocus={() => { if (value.length >= 2) setOpen(true) }}
+        onFocus={() => { if (value.length >= 2) { updatePos(); setOpen(true) } }}
       />
-      {open && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-80 max-h-56 overflow-y-auto mt-0.5">
+      {open && suggestions.length > 0 && typeof window !== 'undefined' && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999,
+          maxHeight: MAX_H + 'px', overflowY: 'auto', background: 'white',
+          border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
           {suggestions.map(s => (
             <button key={s.material} type="button"
-              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex gap-2"
+              style={{ display: 'flex', gap: '10px', width: '100%', textAlign: 'left',
+                padding: '7px 12px', fontSize: '12px', background: 'transparent',
+                border: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#f0fdf4')}
+              onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
               onMouseDown={() => { onSelect(s.material, s.descripcion ?? ''); setOpen(false) }}>
-              <span className="font-mono font-semibold text-gray-800 flex-shrink-0">{s.material}</span>
-              <span className="text-gray-500 flex-1 whitespace-normal">{s.descripcion}</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#111', flexShrink: 0, minWidth: '72px' }}>{s.material}</span>
+              <span style={{ color: '#6b7280', lineHeight: '1.4' }}>{s.descripcion}</span>
             </button>
           ))}
         </div>
