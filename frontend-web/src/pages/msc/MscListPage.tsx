@@ -138,10 +138,9 @@ export default function MscListPage() {
     }
 
     const headers = [
-      'Folio SAP','Fecha','Estatus','Solicitante','Destinatario','Motivo',
-      'Código','Artículo','Cant. Pedida','Cant. Recibida','Cant. Entregada',
-      'Precio Unitario','Importe Pedido','Importe Recibido','Importe Comprobado',
-      'Evidencia Subida'
+      'Folio SAP','Asunto','Fecha','Estatus','Solicitante','Destinatario','Motivo',
+      'Codigo','Articulo','Cant. Pedida',
+      'Precio Unitario','Importe Pedido'
     ].join('\t')
 
     const lines: string[] = [headers]
@@ -155,6 +154,7 @@ export default function MscListPage() {
         const precio = Number(item.precio_unitario ?? 0)
         lines.push([
           s.numero_pedido_sap ?? '',
+          s.asunto ?? '',
           s.fecha ?? '',
           s.estatus ?? '',
           s.solicitante ?? '',
@@ -163,13 +163,8 @@ export default function MscListPage() {
           item.codigo ?? '',
           item.descripcion ?? '',
           item.cantidad_pedida ?? '',
-          '',
-          '',
           precio > 0 ? precio : '',
           precio > 0 ? (precio * (item.cantidad_pedida ?? 0)).toFixed(2) : '',
-          '',
-          '',
-          '',
         ].join('\t'))
       }
     }
@@ -335,6 +330,7 @@ export default function MscListPage() {
                   </span>
                 </div>
                 <div className="flex gap-3 text-xs text-gray-400 flex-wrap">
+                  {s.asunto && <span className="font-medium text-gray-600">{s.asunto}</span>}
                   {s.destinatario_nombre && <span>Para: {s.destinatario_nombre}</span>}
                   {s.motivo && <span>{s.motivo}</span>}
                   <span>{new Date(s.created_at).toLocaleDateString('es-MX')}</span>
@@ -349,20 +345,30 @@ export default function MscListPage() {
                     {items.length > 4 && <span className="text-xs text-gray-400">+{items.length - 4}</span>}
                   </div>
                 )}
-                {/* Chips de importe */}
-                {hasPrice && (
-                  <div className="flex gap-2 mt-2 flex-wrap">
+                {/* Chips de importe y disponibles */}
+                <div className="flex gap-2 mt-2 flex-wrap items-center">
+                  {(() => {
+                    const items = s.msc_items ?? []
+                    const activos = items.filter((i: any) => i.estatus_linea !== 'cancelado')
+                    const totalPedido = activos.reduce((a: number, i: any) => a + (i.cantidad_pedida ?? 0), 0)
+                    const totalEntregado = 0 // se calcula en detalle
+                    const disponible = totalPedido - totalEntregado
+                    return (
+                      <span className={`text-xs px-2 py-1 rounded-lg font-medium ${
+                        disponible <= 0 ? 'bg-green-100 text-green-700' :
+                        disponible < totalPedido ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {activos.length} material(es)
+                      </span>
+                    )
+                  })()}
+                  {hasPrice && (
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium">
                       Solicitado {formatMXN(solicitado)}
                     </span>
-                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-medium">
-                      Recibido {formatMXN(recibido)}
-                    </span>
-                    <span className="text-xs bg-teal-50 text-teal-600 px-2 py-1 rounded-lg font-medium">
-                      Comprobado {formatMXN(comprobado)}
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <span className="text-gray-300 text-lg flex-shrink-0 mt-1">›</span>
             </Link>

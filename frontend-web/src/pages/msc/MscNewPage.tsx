@@ -174,6 +174,7 @@ export default function MscNewPage() {
   const nav = useNavigate()
   const [form, setForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
+    asunto: '',
     motivo: '',
     descripcion: '',
     destinatario_tipo: 'cliente',
@@ -324,6 +325,13 @@ export default function MscNewPage() {
             <input type="date"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
               value={form.fecha} onChange={e => setForm(x => ({ ...x, fecha: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Asunto / Referencia</label>
+            <input
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+              placeholder="Ej: Donativo Hospital General Enero 2026"
+              value={form.asunto} onChange={e => setForm(x => ({ ...x, asunto: e.target.value }))} />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Quien lo solicita</label>
