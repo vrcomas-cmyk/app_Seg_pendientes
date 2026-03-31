@@ -234,7 +234,16 @@ export default function MscDetailPage() {
       }
       toast.success('Solicitud cancelada')
     }
-    setCancelModal(null); setCancelMotivo(''); load()
+    setCancelModal(null); setCancelMotivo('')
+    // Verificar si quedan items activos
+    const { data: remainingItems } = await supabase.from('msc_items')
+      .select('id, estatus_linea').eq('solicitud_id', id)
+    const hayActivos = (remainingItems ?? []).some(i => i.estatus_linea !== 'cancelado')
+    if (!hayActivos) {
+      await supabase.from('msc_solicitudes').update({ estatus: 'cancelada' }).eq('id', id)
+      toast('Solicitud cancelada — todos los materiales fueron cancelados')
+    }
+    load()
   }
 
   // Reactivar item
@@ -923,23 +932,53 @@ export default function MscDetailPage() {
               <button onClick={() => setShowAnexoB(false)} className="text-gray-400 hover:text-gray-600 text-xl">x</button>
             </div>
             <div className="space-y-3">
-              {[
-                { label: 'No. Cliente', key: 'no_cliente' },
-                { label: 'Cliente', key: 'cliente' },
-                { label: 'Grupo Cliente', key: 'grupo_cliente' },
-                { label: 'Ejecutivo', key: 'ejecutivo' },
-                { label: 'Zona', key: 'zona' },
-                { label: 'Dirección Ventas *', key: 'direccion_ventas' },
-                { label: 'Observaciones', key: 'observaciones' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-xs text-gray-500 block mb-1">{f.label}</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-                    value={anexoBForm[f.key as keyof typeof anexoBForm]}
-                    onChange={e => setAnexoBForm(x => ({ ...x, [f.key]: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">No. Cliente</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                    value={anexoBForm.no_cliente}
+                    onChange={e => setAnexoBForm(x => ({ ...x, no_cliente: e.target.value }))} />
                 </div>
-              ))}
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Grupo Cliente</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                    value={anexoBForm.grupo_cliente}
+                    onChange={e => setAnexoBForm(x => ({ ...x, grupo_cliente: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Cliente</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  value={anexoBForm.cliente}
+                  onChange={e => setAnexoBForm(x => ({ ...x, cliente: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Ejecutivo</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                    value={anexoBForm.ejecutivo}
+                    onChange={e => setAnexoBForm(x => ({ ...x, ejecutivo: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Zona</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                    value={anexoBForm.zona}
+                    onChange={e => setAnexoBForm(x => ({ ...x, zona: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Dirección Ventas *</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  placeholder="Captura manual"
+                  value={anexoBForm.direccion_ventas}
+                  onChange={e => setAnexoBForm(x => ({ ...x, direccion_ventas: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Observaciones</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  value={anexoBForm.observaciones}
+                  onChange={e => setAnexoBForm(x => ({ ...x, observaciones: e.target.value }))} />
+              </div>
             </div>
             <div className="flex justify-between mt-5">
               <button onClick={() => setShowAnexoB(false)}

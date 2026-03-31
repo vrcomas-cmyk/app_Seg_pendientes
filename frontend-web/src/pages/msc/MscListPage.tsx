@@ -22,7 +22,7 @@ export default function MscListPage() {
   const { isAdmin, isGerente } = useRole()
   const [solicitudes, setSolicitudes]     = useState<any[]>([])
   const [loading, setLoading]             = useState(true)
-  const [filterEstatus, setFilterEstatus] = useState('')
+  const [filterEstatus, setFilterEstatus] = useState('activas')
   const [search, setSearch]               = useState('')
   const [viewMode, setViewMode]           = useState<'mine'|'team'|'all'|'user'>('mine')
   const [teamUsers, setTeamUsers]         = useState<any[]>([])
@@ -90,7 +90,7 @@ export default function MscListPage() {
 
   // Calcular importes de una solicitud
   const calcImportes = (s: any) => {
-    const items = s.msc_items ?? []
+    const items = (s.msc_items ?? []).filter((i: any) => i.estatus_linea !== 'cancelado')
     let solicitado = 0, hasPrice = false
     for (const item of items) {
       if (!item.precio_unitario) continue
@@ -198,7 +198,8 @@ export default function MscListPage() {
   }
 
   const visible = solicitudes.filter(s => {
-    if (filterEstatus && s.estatus !== filterEstatus) return false
+    if (filterEstatus === 'activas' && ['completada','cancelada','rechazada'].includes(s.estatus)) return false
+    if (filterEstatus && filterEstatus !== 'activas' && s.estatus !== filterEstatus) return false
     if (search) {
       const q = search.toLowerCase()
       return s.numero_pedido_sap?.toLowerCase().includes(q) ||
@@ -291,12 +292,12 @@ export default function MscListPage() {
       {/* Filtros */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <div className="flex bg-white border border-gray-200 rounded-xl overflow-x-auto">
-          {['','borrador','enviada','aprobada','en_proceso','completada','cancelada'].map(e => (
+          {['activas','','borrador','enviada','aprobada','en_proceso','completada','cancelada'].map(e => (
             <button key={e} onClick={() => setFilterEstatus(e)}
               className={`flex-shrink-0 px-3 py-2 text-xs font-medium transition ${
                 filterEstatus === e ? 'bg-teal-600 text-white' : 'text-gray-500 hover:bg-gray-50'
               }`}>
-              {e === '' ? 'Todas' : e.replace('_',' ')}
+              {e === 'activas' ? 'Pendientes' : e === '' ? 'Todas' : e.replace('_',' ')}
             </button>
           ))}
         </div>
