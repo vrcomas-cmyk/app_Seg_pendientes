@@ -44,9 +44,7 @@ export default function MscListPage() {
       .from('msc_solicitudes')
       .select(`
         *,
-        msc_items(id, codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea),
-        msc_recepciones(id, msc_recepcion_items(codigo, cantidad_recibida)),
-        msc_salidas(id, evidencia_url, msc_salida_items(solicitud_id, codigo, cantidad_entregada))
+        msc_items(id, codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea)
       `)
       .order('created_at', { ascending: false })
 
@@ -93,38 +91,13 @@ export default function MscListPage() {
   // Calcular importes de una solicitud
   const calcImportes = (s: any) => {
     const items = s.msc_items ?? []
-    const recepciones = s.msc_recepciones ?? []
-    const salidas = s.msc_salidas ?? []
-
-    let solicitado = 0, recibido = 0, comprobado = 0, hasPrice = false
-
+    let solicitado = 0, hasPrice = false
     for (const item of items) {
       if (!item.precio_unitario) continue
       hasPrice = true
-      const precio = Number(item.precio_unitario)
-
-      // Solicitado
-      solicitado += precio * (item.cantidad_pedida ?? 0)
-
-      // Recibido — suma de recepciones para este item
-      const cantRec = recepciones.reduce((acc: number, rec: any) => {
-        const ri = (rec.msc_recepcion_items ?? []).find((r: any) => r.codigo === item.codigo)
-        return acc + (ri?.cantidad_recibida ?? 0)
-      }, 0)
-      recibido += precio * cantRec
-
-      // Comprobado — salidas con evidencia
-      for (const sal of salidas) {
-        const tieneEvidencia = !!sal.evidencia_url
-        if (!tieneEvidencia) continue
-        const si = (sal.msc_salida_items ?? []).find((x: any) =>
-          x.solicitud_id === s.id && x.codigo === item.codigo
-        )
-        if (si) comprobado += precio * (si.cantidad_entregada ?? 0)
-      }
+      solicitado += Number(item.precio_unitario) * (item.cantidad_pedida ?? 0)
     }
-
-    return { solicitado, recibido, comprobado, hasPrice }
+    return { solicitado, recibido: 0, comprobado: 0, hasPrice }
   }
 
   // Descargar reporte Excel
