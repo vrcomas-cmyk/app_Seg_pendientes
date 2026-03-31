@@ -77,7 +77,7 @@ function MaterialInput({ value, onChange, onSelect, field }: {
     const { data } = await supabase.from('catalog_materials')
       .select('material, descripcion')
       .ilike(col, `%${q}%`)
-      .limit(6)
+      .limit(10)
     setSuggestions(data ?? [])
     updateDropPos()
     setOpen(true)
@@ -112,10 +112,11 @@ function MaterialInput({ value, onChange, onSelect, field }: {
 }
 
 // Autocomplete de clientes
-function ClienteInput({ value, onChange, onSelect }: {
+function ClienteInput({ value, onChange, onSelect, razonSocial }: {
   value: string
   onChange: (v: string) => void
-  onSelect: (id: string, nombre: string) => void
+  onSelect: (id: string, nombre: string, razonSocial: string) => void
+  razonSocial?: string
 }) {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [open, setOpen] = useState(false)
@@ -135,7 +136,7 @@ function ClienteInput({ value, onChange, onSelect }: {
     const { data } = await supabase.from('crm_clients')
       .select('id, solicitante, razon_social')
       .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
-      .limit(6)
+      .limit(10)
     setSuggestions(data ?? [])
     setOpen(true)
   }
@@ -156,7 +157,7 @@ function ClienteInput({ value, onChange, onSelect }: {
             <button key={c.id} type="button"
               className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
               onMouseDown={() => {
-                onSelect(c.id, c.solicitante)
+                onSelect(c.id, c.solicitante, c.razon_social ?? '')
                 setOpen(false)
               }}>
               <span className="font-semibold text-gray-800">{c.solicitante}</span>
@@ -177,6 +178,7 @@ export default function MscNewPage() {
     descripcion: '',
     destinatario_tipo: 'cliente',
     destinatario_nombre: '',
+    razon_social_dest: '',
     solicitante: '',
     client_id: '',
   })
@@ -283,7 +285,7 @@ export default function MscNewPage() {
     ).join('\n')
     const subject = encodeURIComponent(`Solicitud MSC - ${form.fecha}`)
     const body = encodeURIComponent(
-      `Solicitud de mercancia sin cargo\n\nFecha: ${form.fecha}\nSolicitante: ${form.solicitante}\nMotivo: ${form.motivo}\nPara: ${form.destinatario_nombre}\n\nMateriales:\n${materiales}`
+      `Solicitud de mercancia sin cargo\n\nFecha: ${form.fecha}\nSolicitante: ${form.solicitante}\nMotivo: ${form.motivo}\nPara: ${form.destinatario_nombre}\n${form.descripcion ? `\nDescripcion / Justificacion:\n${form.descripcion}\n` : ''}\nMateriales:\n${materiales}`
     )
     const a = document.createElement('a')
     a.href = `mailto:?subject=${subject}&body=${body}`
@@ -357,11 +359,17 @@ export default function MscNewPage() {
             <label className="text-xs text-gray-500 block mb-1">Destinatario</label>
             <ClienteInput
               value={form.destinatario_nombre}
-              onChange={v => setForm(x => ({ ...x, destinatario_nombre: v, client_id: '' }))}
-              onSelect={(id, nombre) => setForm(x => ({ ...x, destinatario_nombre: nombre, client_id: id }))}
+              onChange={v => setForm(x => ({ ...x, destinatario_nombre: v, client_id: '', razon_social_dest: '' }))}
+              onSelect={(id, nombre, rs) => setForm(x => ({ ...x, destinatario_nombre: nombre, client_id: id, razon_social_dest: rs }))}
+              razonSocial={form.razon_social_dest}
             />
             {form.client_id && (
-              <p className="text-xs text-teal-600 font-medium mt-1">Cliente vinculado</p>
+              <div className="mt-1">
+                <p className="text-xs text-teal-600 font-medium">Cliente vinculado</p>
+                {form.razon_social_dest && (
+                  <p className="text-xs text-gray-500 mt-0.5">Razón Social: {form.razon_social_dest}</p>
+                )}
+              </div>
             )}
           </div>
         </div>
