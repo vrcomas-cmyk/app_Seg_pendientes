@@ -152,25 +152,6 @@ export default function MscListPage() {
       const salidas = s.msc_salidas ?? []
 
       for (const item of items) {
-        const cantRec = recepciones.reduce((acc: number, rec: any) => {
-          const ri = (rec.msc_recepcion_items ?? []).find((r: any) => r.codigo === item.codigo)
-          return acc + (ri?.cantidad_recibida ?? 0)
-        }, 0)
-
-        let cantEnt = 0
-        let tieneEvidencia = false
-        for (const sal of salidas) {
-          const si = (sal.msc_salida_items ?? []).find((x: any) =>
-            x.solicitud_id === s.id && x.codigo === item.codigo
-          )
-          if (si) {
-            cantEnt += si.cantidad_entregada ?? 0
-            if ((sal.msc_evidencias ?? []).some((e: any) => e.salida_id === sal.id)) {
-              tieneEvidencia = true
-            }
-          }
-        }
-
         const precio = Number(item.precio_unitario ?? 0)
         lines.push([
           s.numero_pedido_sap ?? '',
@@ -182,13 +163,13 @@ export default function MscListPage() {
           item.codigo ?? '',
           item.descripcion ?? '',
           item.cantidad_pedida ?? '',
-          cantRec,
-          cantEnt,
+          '',
+          '',
           precio > 0 ? precio : '',
           precio > 0 ? (precio * (item.cantidad_pedida ?? 0)).toFixed(2) : '',
-          precio > 0 ? (precio * cantRec).toFixed(2) : '',
-          precio > 0 ? (precio * cantEnt).toFixed(2) : '',
-          tieneEvidencia ? 'Sí' : 'No',
+          '',
+          '',
+          '',
         ].join('\t'))
       }
     }

@@ -62,7 +62,7 @@ export default function MscDetailPage() {
 
   const load = useCallback(async () => {
     const [s, it, rec, sal, ev] = await Promise.all([
-      supabase.from('msc_solicitudes').select('*, crm_clients(no_cliente, solicitante, grupo_cliente, ejecutivo, zona)').eq('id', id).single(),
+      supabase.from('msc_solicitudes').select('*').eq('id', id).single(),
       supabase.from('msc_items').select('*').eq('solicitud_id', id).order('created_at'),
       supabase.from('msc_recepciones').select('*, msc_recepcion_items(*)').eq('solicitud_id', id).order('created_at'),
       supabase.from('msc_salidas').select('*, msc_salida_items(*)').order('created_at', { ascending: false }),
@@ -83,15 +83,27 @@ export default function MscDetailPage() {
         fecha_pedido_sap:  s.data.fecha_pedido_sap ?? '',
         capturado_por:     s.data.capturado_por ?? '',
       })
-      const cli = s.data.crm_clients
-      setAnexoBForm(prev => ({
-        ...prev,
-        no_cliente:    cli?.no_cliente ?? '',
-        cliente:       s.data.destinatario_nombre ?? cli?.solicitante ?? '',
-        grupo_cliente: cli?.grupo_cliente ?? '',
-        ejecutivo:     cli?.ejecutivo ?? '',
-        zona:          cli?.zona ?? '',
-      }))
+      // Cargar datos del cliente si hay client_id
+      if (s.data?.client_id) {
+        const { data: cli } = await supabase.from('crm_clients')
+          .select('no_cliente, solicitante, grupo_cliente, ejecutivo, zona')
+          .eq('id', s.data.client_id).single()
+        if (cli) {
+          setAnexoBForm(prev => ({
+            ...prev,
+            no_cliente:    cli.no_cliente ?? '',
+            cliente:       s.data.destinatario_nombre ?? cli.solicitante ?? '',
+            grupo_cliente: cli.grupo_cliente ?? '',
+            ejecutivo:     cli.ejecutivo ?? '',
+            zona:          cli.zona ?? '',
+          }))
+        }
+      } else {
+        setAnexoBForm(prev => ({
+          ...prev,
+          cliente: s.data.destinatario_nombre ?? '',
+        }))
+      }
     }
   }, [id])
 
