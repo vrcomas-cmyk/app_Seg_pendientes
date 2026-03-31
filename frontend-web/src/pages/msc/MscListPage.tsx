@@ -41,7 +41,6 @@ export default function MscListPage() {
     if (!user) { setLoading(false); return }
 
     let query = supabase
-    let query = supabase
       .from('msc_solicitudes_resumen')
       .select('*')
 
