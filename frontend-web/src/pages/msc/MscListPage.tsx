@@ -46,8 +46,7 @@ export default function MscListPage() {
         *,
         msc_items(id, codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea),
         msc_recepciones(id, msc_recepcion_items(codigo, cantidad_recibida)),
-        msc_salidas(id, evidencia_url, msc_salida_items(solicitud_id, codigo, cantidad_entregada),
-        msc_evidencias:msc_evidencias(salida_id))
+        msc_salidas(id, evidencia_url, msc_salida_items(solicitud_id, codigo, cantidad_entregada))
       `)
       .order('created_at', { ascending: false })
 
@@ -116,7 +115,7 @@ export default function MscListPage() {
 
       // Comprobado — salidas con evidencia
       for (const sal of salidas) {
-        const tieneEvidencia = (sal.msc_evidencias ?? []).some((e: any) => e.salida_id === sal.id)
+        const tieneEvidencia = !!sal.evidencia_url
         if (!tieneEvidencia) continue
         const si = (sal.msc_salida_items ?? []).find((x: any) =>
           x.solicitud_id === s.id && x.codigo === item.codigo
@@ -139,8 +138,7 @@ export default function MscListPage() {
       msc_items(codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea,
         solicitud_id),
       msc_recepciones(id, msc_recepcion_items(codigo, cantidad_recibida)),
-      msc_salidas(id, msc_salida_items(solicitud_id, codigo, cantidad_entregada),
-        msc_evidencias:msc_evidencias(salida_id))
+      msc_salidas(id, msc_salida_items(solicitud_id, codigo, cantidad_entregada))
     `).order('created_at', { ascending: false })
 
     if (reportFilters.fechaInicio) query = query.gte('created_at', reportFilters.fechaInicio)
