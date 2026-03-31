@@ -650,10 +650,7 @@ export default function MscDetailPage() {
                 + Nueva salida
               </button>
             )}
-            <button onClick={() => setShowAnexoB(true)}
-              className="border border-green-300 text-green-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-green-50 min-h-[40px]">
-              Anexo B
-            </button>
+
             {!['completada','cancelada'].includes(sol.estatus) && (
               <button onClick={() => setCancelModal({ type: 'all' })}
                 className="border border-red-200 text-red-500 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-50 min-h-[40px]">

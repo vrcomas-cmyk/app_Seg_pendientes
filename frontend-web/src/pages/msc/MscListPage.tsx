@@ -90,14 +90,12 @@ export default function MscListPage() {
 
   // Calcular importes de una solicitud
   const calcImportes = (s: any) => {
-    const items = (s.msc_items ?? []).filter((i: any) => i.estatus_linea !== 'cancelado')
-    let solicitado = 0, hasPrice = false
-    for (const item of items) {
-      if (!item.precio_unitario) continue
-      hasPrice = true
-      solicitado += Number(item.precio_unitario) * (item.cantidad_pedida ?? 0)
-    }
-    return { solicitado, recibido: 0, comprobado: 0, hasPrice }
+    const solicitado = Number(s.importe_solicitado ?? 0)
+    const recibido   = Number(s.importe_recibido ?? 0)
+    const entregado  = Number(s.importe_entregado ?? 0)
+    const pendiente  = solicitado - recibido
+    const hasPrice   = solicitado > 0
+    return { solicitado, recibido, entregado, pendiente, hasPrice }
   }
 
   // Descargar reporte Excel
@@ -209,6 +207,8 @@ export default function MscListPage() {
   const aprobadas   = solicitudes.filter(s => s.estatus === 'aprobada').length
   const enProceso   = solicitudes.filter(s => s.estatus === 'en_proceso').length
   const completadas = solicitudes.filter(s => s.estatus === 'completada').length
+  const totalSolicitado = solicitudes.reduce((a, s) => a + Number(s.importe_solicitado ?? 0), 0)
+  const totalRecibido   = solicitudes.reduce((a, s) => a + Number(s.importe_recibido ?? 0), 0)
   const userOptions = isAdmin ? allUsers : teamUsers
 
   return (
@@ -272,10 +272,12 @@ export default function MscListPage() {
       {/* Métricas */}
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mb-4">
         {[
-          { label: 'Activas',     value: activas,     color: 'bg-white border-gray-200 text-gray-700' },
-          { label: 'Aprobadas',   value: aprobadas,   color: 'bg-green-50 border-green-200 text-green-700' },
-          { label: 'En proceso',  value: enProceso,   color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-          { label: 'Completadas', value: completadas, color: 'bg-teal-50 border-teal-200 text-teal-700' },
+          { label: 'Activas',          value: activas,                      color: 'bg-white border-gray-200 text-gray-700' },
+          { label: 'Aprobadas',        value: aprobadas,                    color: 'bg-green-50 border-green-200 text-green-700' },
+          { label: 'En proceso',       value: enProceso,                    color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+          { label: 'Completadas',      value: completadas,                  color: 'bg-teal-50 border-teal-200 text-teal-700' },
+          { label: 'Total solicitado', value: formatMXN(totalSolicitado),   color: 'bg-white border-gray-200 text-gray-600' },
+          { label: 'Total recibido',   value: formatMXN(totalRecibido),     color: 'bg-blue-50 border-blue-200 text-blue-600' },
         ].map(m => (
           <div key={m.label} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium ${m.color}`}>
             <span className="text-lg font-bold">{m.value}</span>
@@ -347,27 +349,25 @@ export default function MscListPage() {
                 )}
                 {/* Chips de importe y disponibles */}
                 <div className="flex gap-2 mt-2 flex-wrap items-center">
-                  {(() => {
-                    const items = s.msc_items ?? []
-                    const activos = items.filter((i: any) => i.estatus_linea !== 'cancelado')
-                    const totalPedido = activos.reduce((a: number, i: any) => a + (i.cantidad_pedida ?? 0), 0)
-                    const totalEntregado = 0 // se calcula en detalle
-                    const disponible = totalPedido - totalEntregado
-                    return (
-                      <span className={`text-xs px-2 py-1 rounded-lg font-medium ${
-                        disponible <= 0 ? 'bg-green-100 text-green-700' :
-                        disponible < totalPedido ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-500'
-                      }`}>
-                        {activos.length} material(es)
-                      </span>
-                    )
-                  })()}
-                  {hasPrice && (
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium">
+                    {s.items_activos_count ?? 0} material(es)
+                  </span>
+                  {hasPrice && <>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium">
                       Solicitado {formatMXN(solicitado)}
                     </span>
-                  )}
+                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-medium">
+                      Recibido {formatMXN(recibido)}
+                    </span>
+                    <span className="text-xs bg-teal-50 text-teal-600 px-2 py-1 rounded-lg font-medium">
+                      Entregado {formatMXN(entregado)}
+                    </span>
+                    {pendiente > 0 && (
+                      <span className="text-xs bg-yellow-50 text-yellow-600 px-2 py-1 rounded-lg font-medium">
+                        Pendiente {formatMXN(pendiente)}
+                      </span>
+                    )}
+                  </>}
                 </div>
               </div>
               <span className="text-gray-300 text-lg flex-shrink-0 mt-1">›</span>
