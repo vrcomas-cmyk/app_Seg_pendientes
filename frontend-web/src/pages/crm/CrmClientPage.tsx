@@ -133,6 +133,9 @@ export default function CrmClientPage() {
       rfc: form.rfc, poblacion: form.poblacion, estado: form.estado,
       pais: form.pais, ramo: form.ramo, centro: form.centro,
       gpo_vendedores: form.gpo_vendedores,
+      ejecutivo: form.ejecutivo,
+      grupo_cliente: form.grupo_cliente,
+      zona: form.zona,
     }).eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Cliente actualizado'); setEditMode(false); load() }
@@ -283,6 +286,9 @@ export default function CrmClientPage() {
                 { label: 'Estado', key: 'estado' }, { label: 'País', key: 'pais' },
                 { label: 'Ramo', key: 'ramo' }, { label: 'Centro', key: 'centro' },
                 { label: 'Gpo. Vendedores', key: 'gpo_vendedores' },
+                { label: 'Ejecutivo', key: 'ejecutivo' },
+                { label: 'Grupo Cliente', key: 'grupo_cliente' },
+                { label: 'Zona', key: 'zona' },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
@@ -304,6 +310,9 @@ export default function CrmClientPage() {
                 ['Estado', client.estado], ['País', client.pais],
                 ['Ramo', client.ramo], ['Centro', client.centro],
                 ['Gpo. Vendedores', client.gpo_vendedores],
+                ['Ejecutivo', client.ejecutivo],
+                ['Grupo Cliente', client.grupo_cliente],
+                ['Zona', client.zona],
               ].map(([label, val]) => val ? (
                 <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="font-medium text-gray-700">{val}</p></div>
               ) : null)}

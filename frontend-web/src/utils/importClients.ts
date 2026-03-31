@@ -5,12 +5,14 @@ interface RawRow {
   RFC?: string; Población?: string; Estado?: string; País?: string;
   Teléfono?: string; Ramo?: string; Centro?: string;
   'Gpo. vendedores'?: string; Correos?: string;
+  Ejecutivo?: string; 'Grupo Cliente'?: string; Zona?: string;
 }
 
 export interface ClientImport {
   solicitante: string; razon_social?: string; rfc?: string;
   poblacion?: string; estado?: string; pais?: string;
   ramo?: string; centro?: string; gpo_vendedores?: string;
+  ejecutivo?: string; grupo_cliente?: string; zona?: string;
   telefonos: string[]; correos: string[];
   recipients: RecipientImport[];
 }
@@ -74,6 +76,9 @@ export function parseExcelFile(file: File): Promise<ClientImport[]> {
               ramo:           clean(row.Ramo) || undefined,
               centro:         clean(row.Centro) || undefined,
               gpo_vendedores: clean(row['Gpo. vendedores']) || undefined,
+              ejecutivo:      clean(row.Ejecutivo) || undefined,
+              grupo_cliente:  clean(row['Grupo Cliente']) || undefined,
+              zona:           clean(row.Zona) || undefined,
               telefonos: tels,
               correos:   mails,
               recipients: [],
@@ -82,6 +87,10 @@ export function parseExcelFile(file: File): Promise<ClientImport[]> {
             const existing = clientMap.get(solicitante)!
             existing.telefonos = mergeUnique(existing.telefonos, tels)
             existing.correos   = mergeUnique(existing.correos, mails)
+            // Actualizar campos si vienen en esta fila
+            if (!existing.ejecutivo && clean(row.Ejecutivo)) existing.ejecutivo = clean(row.Ejecutivo)
+            if (!existing.grupo_cliente && clean(row['Grupo Cliente'])) existing.grupo_cliente = clean(row['Grupo Cliente'])
+            if (!existing.zona && clean(row.Zona)) existing.zona = clean(row.Zona)
           }
 
           const destinatario = clean(row.Destinatario)

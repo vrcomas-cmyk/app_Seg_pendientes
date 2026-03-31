@@ -64,6 +64,9 @@ export default function CrmImportPage() {
           rfc: c.rfc, poblacion: c.poblacion, estado: c.estado,
           pais: c.pais, ramo: c.ramo, centro: c.centro,
           gpo_vendedores: c.gpo_vendedores,
+          ejecutivo: c.ejecutivo,
+          grupo_cliente: c.grupo_cliente,
+          zona: c.zona,
           telefonos: c.telefonos, correos: c.correos,
           created_by: user!.id,
         })
@@ -74,7 +77,7 @@ export default function CrmImportPage() {
         const needsUpdate  = mergedTels.length !== (existing.telefonos ?? []).length ||
                              mergedEmails.length !== (existing.correos ?? []).length
         if (needsUpdate) {
-          toUpdate.push({ id: existing.id, telefonos: mergedTels, correos: mergedEmails })
+          toUpdate.push({ id: existing.id, telefonos: mergedTels, correos: mergedEmails, ejecutivo: c.ejecutivo, grupo_cliente: c.grupo_cliente, zona: c.zona })
         }
       }
     }
@@ -92,7 +95,7 @@ export default function CrmImportPage() {
     for (let i = 0; i < toUpdate.length; i++) {
       if (i % 50 === 0) setProgress(`Actualizando clientes... ${i} / ${toUpdate.length}`)
       await supabase.from('crm_clients')
-        .update({ telefonos: toUpdate[i].telefonos, correos: toUpdate[i].correos })
+        .update({ telefonos: toUpdate[i].telefonos, correos: toUpdate[i].correos, ejecutivo: toUpdate[i].ejecutivo, grupo_cliente: toUpdate[i].grupo_cliente, zona: toUpdate[i].zona })
         .eq('id', toUpdate[i].id)
       updated++
     }
