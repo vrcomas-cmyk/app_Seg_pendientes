@@ -72,9 +72,6 @@ export default function MscDetailPage() {
     fecha_entrega: new Date().toISOString().split('T')[0],
     direccion_ventas: '', observaciones: '', motivo: '',
   })
-  const [salidaClienteData, setSalidaClienteData] = useState<any>(null)
-  const [savingSalida, setSavingSalida] = useState(false)
-  const [salidaCreada, setSalidaCreada] = useState<any>(null)
 
   // Cancelacion
   const [cancelModal, setCancelModal] = useState<{ type: 'item' | 'all'; itemId?: string } | null>(null)
