@@ -63,15 +63,6 @@ export default function MscDetailPage() {
   const [salidaCreada, setSalidaCreada] = useState<any>(null)
 
   // Salida desde detalle
-  const [showSalidaPanel, setShowSalidaPanel] = useState(false)
-  const [salidaStep, setSalidaStep] = useState(1)
-  const [salidaQtys, setSalidaQtys] = useState<Record<string, string>>({})
-  const [salidaUms, setSalidaUms] = useState<Record<string, string>>({})
-  const [salidaForm2, setSalidaForm2] = useState({
-    receptor_nombre: '', receptor_tipo: 'cliente',
-    fecha_entrega: new Date().toISOString().split('T')[0],
-    direccion_ventas: '', observaciones: '', motivo: '',
-  })
 
   // Cancelacion
   const [cancelModal, setCancelModal] = useState<{ type: 'item' | 'all'; itemId?: string } | null>(null)
