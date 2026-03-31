@@ -321,8 +321,9 @@ export default function MscListPage() {
           const { solicitado, recibido, entregado, pendiente, hasPrice } = calcImportes(s)
           return (
             <Link key={s.id} to={`/msc/${s.id}`}
-              className="flex items-start gap-4 px-4 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition min-h-[64px]">
+              className="flex items-start gap-4 px-4 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition">
               <div className="flex-1 min-w-0">
+                {/* Fila 1: Folio + Estatus + Asunto */}
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <p className="text-sm font-semibold text-gray-800">
                     {s.numero_pedido_sap ? `Folio: ${s.numero_pedido_sap}` : 'Sin folio SAP'}
@@ -330,29 +331,32 @@ export default function MscListPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTATUS_COLOR[s.estatus] ?? 'bg-gray-100 text-gray-500'}`}>
                     {s.estatus?.replace('_',' ')}
                   </span>
+                  {s.asunto && (
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
+                      {s.asunto}
+                    </span>
+                  )}
                 </div>
-                <div className="flex gap-3 text-xs text-gray-400 flex-wrap">
-                  {s.asunto && <span className="font-medium text-gray-600">{s.asunto}</span>}
-                  {s.destinatario_nombre && <span>Para: {s.destinatario_nombre}</span>}
-                  {s.motivo && <span>{s.motivo}</span>}
+                {/* Fila 2: Para + Motivo + Fecha */}
+                <div className="flex gap-3 text-xs text-gray-400 flex-wrap mb-1">
+                  {s.destinatario_nombre && <span>Para: <strong className="text-gray-600">{s.destinatario_nombre}</strong></span>}
+                  {s.motivo && <span>Motivo: {s.motivo}</span>}
                   <span>{new Date(s.created_at).toLocaleDateString('es-MX')}</span>
                 </div>
-                {items.length > 0 && (
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {items.slice(0,4).map((i: any) => (
-                      <span key={i.id} className={`text-xs px-2 py-0.5 rounded font-mono ${
-                        i.estatus_linea === 'cancelado' ? 'bg-red-50 text-red-400 line-through' : 'bg-gray-100 text-gray-600'
-                      }`}>{i.codigo}</span>
+                {/* Fila 3: Materiales */}
+                {s.codigos_activos && (
+                  <div className="flex gap-1 mt-1 flex-wrap mb-1">
+                    {s.codigos_activos.split(', ').slice(0,4).map((c: string) => (
+                      <span key={c} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">{c}</span>
                     ))}
-                    {items.length > 4 && <span className="text-xs text-gray-400">+{items.length - 4}</span>}
+                    {s.codigos_activos.split(', ').length > 4 && (
+                      <span className="text-xs text-gray-400">+{s.codigos_activos.split(', ').length - 4}</span>
+                    )}
                   </div>
                 )}
-                {/* Chips de importe y disponibles */}
-                <div className="flex gap-2 mt-2 flex-wrap items-center">
-                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium">
-                    {s.items_activos_count ?? 0} material(es)
-                  </span>
-                  {hasPrice && <>
+                {/* Fila 4: Importes */}
+                <div className="flex gap-2 mt-1 flex-wrap items-center">
+                  {hasPrice ? <>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium">
                       Solicitado {formatMXN(solicitado)}
                     </span>
@@ -363,11 +367,13 @@ export default function MscListPage() {
                       Entregado {formatMXN(entregado)}
                     </span>
                     {pendiente > 0 && (
-                      <span className="text-xs bg-yellow-50 text-yellow-600 px-2 py-1 rounded-lg font-medium">
+                      <span className="text-xs bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg font-medium">
                         Pendiente {formatMXN(pendiente)}
                       </span>
                     )}
-                  </>}
+                  </> : (
+                    <span className="text-xs text-gray-400">{s.items_activos_count ?? 0} material(es)</span>
+                  )}
                 </div>
               </div>
               <span className="text-gray-300 text-lg flex-shrink-0 mt-1">›</span>

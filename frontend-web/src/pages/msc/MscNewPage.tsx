@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -273,7 +274,7 @@ export default function MscNewPage() {
     const materiales = validRows.map(r =>
       `- ${r.codigo} ${r.descripcion} x${r.cantidad_pedida}`
     ).join('\n')
-    const subject = encodeURIComponent(`Solicitud MSC${form.asunto ? ` - ${form.asunto}` : ''} - ${form.fecha}`)
+    const subject = encodeURIComponent(form.asunto ? form.asunto : `Solicitud MSC - ${form.fecha}`)
     const body = encodeURIComponent(
       `Solicitud de mercancia sin cargo\n\nFecha: ${form.fecha}\nSolicitante: ${form.solicitante}\nMotivo: ${form.motivo}\nPara: ${form.destinatario_nombre}\n${form.descripcion ? `\nDescripcion / Justificacion:\n${form.descripcion}\n` : ''}\nMateriales:\n${materiales}`
     )
