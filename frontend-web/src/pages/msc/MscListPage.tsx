@@ -41,12 +41,9 @@ export default function MscListPage() {
     if (!user) { setLoading(false); return }
 
     let query = supabase
-      .from('msc_solicitudes')
-      .select(`
-        *,
-        msc_items(id, codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea)
-      `)
-      .order('created_at', { ascending: false })
+    let query = supabase
+      .from('msc_solicitudes_resumen')
+      .select('*')
 
     if (viewMode === 'mine') {
       query = query.eq('created_by', user.id)
