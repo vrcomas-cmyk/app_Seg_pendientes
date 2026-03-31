@@ -318,7 +318,7 @@ export default function MscListPage() {
         )}
         {!loading && visible.map(s => {
           const items = s.msc_items ?? []
-          const { solicitado, recibido, comprobado, hasPrice } = calcImportes(s)
+          const { solicitado, recibido, entregado, pendiente, hasPrice } = calcImportes(s)
           return (
             <Link key={s.id} to={`/msc/${s.id}`}
               className="flex items-start gap-4 px-4 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition min-h-[64px]">
