@@ -57,7 +57,7 @@ export default function CrmVentaExcelPage() {
         client_id: clienteId,
         tipo: 'venta_excel',
         etapa: 'venta',
-        estatus: 'activo',
+        estatus: 'borrador',
         fecha_venta: new Date().toISOString().split('T')[0],
         notas: `Importado desde Excel — No. Cliente: ${noCliente}`,
         created_by: user?.id,
@@ -74,7 +74,7 @@ export default function CrmVentaExcelPage() {
           precio_aceptado: r.precio,
           um: r.um || null,
           aceptado: true,
-          estatus: 'activo',
+          estatus: 'borrador',
         }))
       )
     }
