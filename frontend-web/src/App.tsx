@@ -22,6 +22,7 @@ import CrmMaterialsTrackingPage from './pages/crm/CrmMaterialsTrackingPage'
 import CrmOfferItemsTrackingPage from './pages/crm/CrmOfferItemsTrackingPage'
 import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CrmVentaPage from './pages/crm/CrmVentaPage'
+import CrmPipelinePage from './pages/crm/CrmPipelinePage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
 import RouteGuard from './components/RouteGuard'
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/crm/suggestions-import" element={<CrmSuggestionsImportPage />} />
         <Route path="/crm/offers" element={<CrmOffersListPage />} />
         <Route path="/crm/ventas" element={<CrmVentasPage />} />
+        <Route path="/crm/pipeline" element={<RouteGuard module="crm"><CrmPipelinePage /></RouteGuard>} />
         <Route path="/crm/reports" element={<CrmReportsPage />} />
         <Route path="/crm/materials" element={<CrmMaterialsTrackingPage />} />
         <Route path="/crm/items" element={<CrmOfferItemsTrackingPage />} />
