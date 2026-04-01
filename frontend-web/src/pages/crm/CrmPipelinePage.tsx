@@ -268,7 +268,7 @@ export default function CrmPipelinePage() {
                 </div>
               </button>
 
-              <button onClick={() => { setShowNueva(false); nav('/crm') }}
+              <button onClick={() => { setShowNueva(false); nav('/crm/reports') }}
                 className="w-full flex items-start gap-3 border border-gray-200 rounded-xl p-4 text-left hover:border-teal-400 hover:bg-teal-50 transition">
                 <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 text-purple-700 font-bold text-sm">3</div>
                 <div>
