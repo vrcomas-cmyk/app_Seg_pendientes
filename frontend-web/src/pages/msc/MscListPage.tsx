@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
+import * as XLSX from 'xlsx'
 
 const ESTATUS_COLOR: Record<string, string> = {
   borrador:    'bg-gray-100 text-gray-500',
@@ -135,16 +136,16 @@ export default function MscListPage() {
       'Folio SAP','Asunto','Fecha','Estatus','Solicitante','Destinatario','Motivo',
       'Codigo','Articulo','Cant. Pedida',
       'Precio Unitario','Importe Pedido'
-    ].join('\t')
+    ]
 
-    const lines: string[] = [headers]
+    const excelData: any[] = []
 
     for (const s of rows) {
       const items = s.msc_items ?? []
 
       if (items.length === 0) {
         // Si no hay items, agregar una fila con datos de la solicitud
-        lines.push([
+        excelData.push([
           s.numero_pedido_sap ?? '',
           s.asunto ?? '',
           s.fecha ?? '',
@@ -153,12 +154,12 @@ export default function MscListPage() {
           s.destinatario_nombre ?? '',
           s.motivo ?? '',
           '', '', '', '', '',
-        ].join('\t'))
+        ])
       } else {
         // Si hay items, crear una fila por cada item
         for (const item of items) {
           const precio = Number(item.precio_unitario ?? 0)
-          lines.push([
+          excelData.push([
             s.numero_pedido_sap ?? '',
             s.asunto ?? '',
             s.fecha ?? '',
@@ -171,19 +172,17 @@ export default function MscListPage() {
             item.cantidad_pedida ?? '',
             precio > 0 ? precio : '',
             precio > 0 ? (precio * (item.cantidad_pedida ?? 0)).toFixed(2) : '',
-          ].join('\t'))
+          ])
         }
       }
     }
 
-    const content = lines.join('\n')
-    const blob = new Blob(['\ufeff' + content], { type: 'text/tab-separated-values;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `reporte_msc_${new Date().toISOString().split('T')[0]}.xls`
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    // Crear workbook y agregar datos con encabezados
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...excelData])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'MSC Solicitudes')
+    XLSX.writeFile(wb, `reporte_msc_${new Date().toISOString().split('T')[0]}.xlsx`)
+
     setShowReport(false)
     setDownloadingReport(false)
   }
