@@ -101,34 +101,29 @@ export default function MscListPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    let query = supabase.from('msc_solicitudes').select(`
-      *,
-      msc_items(codigo, descripcion, cantidad_pedida, precio_unitario, total, estatus_linea,
-        solicitud_id),
-      msc_recepciones(id, msc_recepcion_items(codigo, cantidad_recibida)),
-      msc_salidas(id, msc_salida_items(solicitud_id, codigo, cantidad_entregada))
-    `).order('created_at', { ascending: false })
+    // Query solicitudes desde la vista
+    let q = supabase.from('msc_solicitudes_resumen')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    if (reportFilters.fechaInicio) query = query.gte('created_at', reportFilters.fechaInicio)
-    if (reportFilters.fechaFin)    query = query.lte('created_at', reportFilters.fechaFin + 'T23:59:59')
-    if (reportFilters.estatus.length > 0 && !reportFilters.estatus.includes('todos')) {
-      if (reportFilters.estatus.includes('pendiente_comprobar')) {
-        // Se filtra después
-      } else {
-        query = query.in('estatus', reportFilters.estatus)
-      }
+    if (reportFilters.fechaInicio) q = q.gte('created_at', reportFilters.fechaInicio)
+    if (reportFilters.fechaFin)    q = q.lte('created_at', reportFilters.fechaFin + 'T23:59:59')
+    if (reportFilters.estatus.length > 0 && !reportFilters.estatus.includes('pendiente_comprobar')) {
+      q = q.in('estatus', reportFilters.estatus)
     }
 
-    const { data } = await query
-    let rows = data ?? []
+    const { data: solData } = await q
+    let rows = solData ?? []
 
-    if (reportFilters.estatus.includes('pendiente_comprobar')) {
-      rows = rows.filter(s => {
-        const salidas = s.msc_salidas ?? []
-        return salidas.some((sal: any) => {
-          const tieneEv = (sal.msc_evidencias ?? []).some((e: any) => e.salida_id === sal.id)
-          return !tieneEv
-        })
+    // Cargar items por separado
+    const ids = rows.map((s: any) => s.id)
+    let itemsMap: Record<string, any[]> = {}
+    if (ids.length > 0) {
+      const { data: itemsData } = await supabase
+        .from('msc_items').select('*').in('solicitud_id', ids)
+      ;(itemsData ?? []).forEach((item: any) => {
+        if (!itemsMap[item.solicitud_id]) itemsMap[item.solicitud_id] = []
+        itemsMap[item.solicitud_id].push(item)
       })
     }
 
@@ -141,7 +136,7 @@ export default function MscListPage() {
     const excelData: any[] = []
 
     for (const s of rows) {
-      const items = s.msc_items ?? []
+      const items = (itemsMap[s.id] ?? []).filter((i: any) => i.estatus_linea !== 'cancelado')
 
       if (items.length === 0) {
         // Si no hay items, agregar una fila con datos de la solicitud
