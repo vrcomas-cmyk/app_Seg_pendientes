@@ -115,9 +115,11 @@ export default function MscListPage() {
     const { data: solData } = await q
     let rows = solData ?? []
 
-    // Cargar items por separado
+    // Cargar items y usuarios por separado
     const ids = rows.map((s: any) => s.id)
+    const createdByIds = [...new Set(rows.map((s: any) => s.created_by))]
     let itemsMap: Record<string, any[]> = {}
+    let emailMap: Record<string, string> = {}
     if (ids.length > 0) {
       const { data: itemsData } = await supabase
         .from('msc_items').select('*').in('solicitud_id', ids)
@@ -126,9 +128,14 @@ export default function MscListPage() {
         itemsMap[item.solicitud_id].push(item)
       })
     }
+    if (createdByIds.length > 0) {
+      const { data: profilesData } = await supabase
+        .from('user_profiles').select('user_id, email').in('user_id', createdByIds)
+      ;(profilesData ?? []).forEach((p: any) => { emailMap[p.user_id] = p.email })
+    }
 
     const headers = [
-      'Folio SAP','Asunto','Fecha','Estatus','Solicitante','Destinatario','Motivo',
+      'Usuario','Folio SAP','Asunto','Fecha','Estatus','Solicitante','Destinatario','Motivo',
       'Codigo','Articulo','Cant. Pedida',
       'Precio Unitario','Importe Pedido'
     ]
@@ -141,6 +148,7 @@ export default function MscListPage() {
       if (items.length === 0) {
         // Si no hay items, agregar una fila con datos de la solicitud
         excelData.push([
+          emailMap[s.created_by] ?? '',
           s.numero_pedido_sap ?? '',
           s.asunto ?? '',
           s.fecha ?? '',
@@ -155,6 +163,7 @@ export default function MscListPage() {
         for (const item of items) {
           const precio = Number(item.precio_unitario ?? 0)
           excelData.push([
+            emailMap[s.created_by] ?? '',
             s.numero_pedido_sap ?? '',
             s.asunto ?? '',
             s.fecha ?? '',
