@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 
 const PAGE_SIZE = 500
 
@@ -224,6 +225,36 @@ export default function CrmReportsPage() {
   }
 
   const hasFilters = search || fuente || centro || solicitante || soloDisponibles
+  const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const [showColFilters, setShowColFilters] = useState(false)
+
+  const exportExcel = () => {
+    const cols = tab === 'suggestions' ? SUGG_COLS : CONS_COLS
+    const filteredRows = rows.filter(row => {
+      return Object.entries(colFilters).every(([key, val]) => {
+        if (!val) return true
+        return String(row[key] ?? '').toLowerCase().includes(val.toLowerCase())
+      })
+    })
+    const headers = cols.map(c => c.label)
+    const data = filteredRows.map(row => cols.map(c => row[c.key] ?? ''))
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
+    // Autowidth
+    ws['!cols'] = headers.map((_, i) => ({
+      wch: Math.max(headers[i].length, ...data.slice(0,100).map(r => String(r[i]).length))
+    }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, tab === 'suggestions' ? 'Sugerencias' : 'Consumo')
+    XLSX.writeFile(wb, `reporte_${tab}_${new Date().toISOString().split('T')[0]}.xlsx`)
+    toast.success(`${filteredRows.length} registros exportados`)
+  }
+
+  const visibleRows = rows.filter(row => {
+    return Object.entries(colFilters).every(([key, val]) => {
+      if (!val) return true
+      return String(row[key] ?? '').toLowerCase().includes(val.toLowerCase())
+    })
+  })
 
   const createOffersFromSelection = async () => {
     if (selected.length === 0) return
@@ -323,17 +354,54 @@ export default function CrmReportsPage() {
             <h1 className="text-xl font-bold text-gray-800">Reportes globales</h1>
           </div>
           <p className="text-sm text-gray-400">
-            {loading ? 'Cargando...' : `${rows.length} de ${total} registros`}
+            {loading ? 'Cargando...' : `${visibleRows.length} de ${rows.length} (total ${total}) registros`}
             {selected.length > 0 && ` · ${selected.length} seleccionados`}
           </p>
         </div>
-        {selected.length > 0 && (
-          <button onClick={createOffersFromSelection} disabled={creatingOffer}
-            className="bg-teal-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-            {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length} seleccionado(s)`}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowColFilters(x => !x)}
+            className={`border px-3 py-2 rounded-lg text-sm font-medium transition ${
+              showColFilters || Object.values(colFilters).some(Boolean)
+                ? 'bg-teal-50 border-teal-300 text-teal-700'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}>
+            Filtrar columnas {Object.values(colFilters).filter(Boolean).length > 0 && `(${Object.values(colFilters).filter(Boolean).length})`}
           </button>
-        )}
+          <button onClick={exportExcel}
+            className="border border-green-300 text-green-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50">
+            Descargar Excel
+          </button>
+          {selected.length > 0 && (
+            <button onClick={createOffersFromSelection} disabled={creatingOffer}
+              className="bg-teal-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
+              {creatingOffer ? 'Generando...' : `Generar oferta(s) (${selected.length})`}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Filtros por columna */}
+      {showColFilters && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-sm font-semibold text-gray-700">Filtrar por columna</p>
+            <button onClick={() => setColFilters({})}
+              className="text-xs text-red-500 hover:text-red-700">Limpiar filtros</button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(tab === 'suggestions' ? SUGG_COLS : CONS_COLS).slice(0, 12).map(col => (
+              <div key={col.key}>
+                <label className="text-xs text-gray-400 block mb-0.5">{col.label}</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400"
+                  placeholder={`Filtrar...`}
+                  value={colFilters[col.key] ?? ''}
+                  onChange={e => setColFilters(prev => ({ ...prev, [col.key]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden w-fit">

@@ -69,7 +69,7 @@ function ClienteInput({ value, onChange, onSelect }: {
     if (q.length < 2) { setSugs([]); setOpen(false); return }
     const { data } = await supabase.from('crm_clients')
       .select('id, solicitante, razon_social, no_cliente')
-      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%,no_cliente.ilike.%${q}%`)
+      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
       .limit(8)
     setSugs(data ?? []); setOpen(true)
   }
@@ -367,10 +367,13 @@ export default function CrmVentaManualPage() {
               <table className="w-full text-xs border-collapse min-w-max">
                 <thead>
                   <tr className="bg-gray-50">
-                    {['Código','Descripción','Cant. Pedida','Cant. Pendiente','Cant. a Entregar','Precio','UM',
-                      'Consumo Prom.','Disponible','Lote','Caducidad','Centro','Almacén','Esp.',''].map(h => (
+                    {['Código','Descripción','Cant. Pedida','Cant. Pendiente','Precio','UM','Esp.'].map(h => (
                       <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap text-xs">{h}</th>
                     ))}
+                    {rows.some(r => r.condicion_especial) && ['Lote','Caducidad','Disponible','Centro','Almacén'].map(h => (
+                      <th key={h} className="px-2 py-2 text-left text-amber-600 font-semibold border-b border-gray-200 whitespace-nowrap text-xs">{h}</th>
+                    ))}
+                    <th className="px-2 py-2 border-b border-gray-200"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -378,57 +381,56 @@ export default function CrmVentaManualPage() {
                     <tr key={i} className={`border-b border-gray-100 ${r.condicion_especial ? 'bg-amber-50' : ''}`}>
                       <td className="px-1 py-1 w-32">
                         <MaterialInput value={r.material} onChange={v => setRow(i, 'material', v)}
-                          onSelect={(m, d, um) => {
-                            setRow(i, 'material', m)
-                            setRow(i, 'descripcion', d)
-                            if (um) setRow(i, 'um', um)
-                          }} />
+                          onSelect={(m, d, um) => { setRow(i,'material',m); setRow(i,'descripcion',d); if(um) setRow(i,'um',um) }} />
                       </td>
                       <td className="px-1 py-1 w-48">
                         <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.descripcion} onChange={e => setRow(i, 'descripcion', e.target.value)} />
+                          value={r.descripcion} onChange={e => setRow(i,'descripcion',e.target.value)} />
                       </td>
-                      {['cantidad_pedida','cantidad_pendiente','cantidad_aceptada','precio'].map(f => (
-                        <td key={f} className="px-1 py-1 w-24">
-                          <input type="number"
-                            className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400 text-right"
-                            value={(r as any)[f]} onChange={e => setRow(i, f, e.target.value)} />
-                        </td>
-                      ))}
+                      <td className="px-1 py-1 w-24">
+                        <input type="number" className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400 text-right"
+                          value={r.cantidad_pedida} onChange={e => setRow(i,'cantidad_pedida',e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1 w-24">
+                        <input type="number" className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400 text-right"
+                          value={r.cantidad_pendiente} onChange={e => setRow(i,'cantidad_pendiente',e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1 w-24">
+                        <input type="number" className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400 text-right"
+                          value={r.precio} onChange={e => setRow(i,'precio',e.target.value)} />
+                      </td>
                       <td className="px-1 py-1 w-16">
                         <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.um} onChange={e => setRow(i, 'um', e.target.value)} />
-                      </td>
-                      {['consumo_promedio','disponible'].map(f => (
-                        <td key={f} className="px-1 py-1 w-24">
-                          <input type="number"
-                            className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400 text-right"
-                            value={(r as any)[f]} onChange={e => setRow(i, f, e.target.value)} />
-                        </td>
-                      ))}
-                      <td className="px-1 py-1 w-28">
-                        <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.lote} onChange={e => setRow(i, 'lote', e.target.value)} placeholder="Lote" />
-                      </td>
-                      <td className="px-1 py-1 w-32">
-                        <input type="date"
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.caducidad} onChange={e => setRow(i, 'caducidad', e.target.value)} />
-                      </td>
-                      <td className="px-1 py-1 w-20">
-                        <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.centro} onChange={e => setRow(i, 'centro', e.target.value)} placeholder="Centro" />
-                      </td>
-                      <td className="px-1 py-1 w-20">
-                        <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                          value={r.almacen} onChange={e => setRow(i, 'almacen', e.target.value)} placeholder="Almacén" />
+                          value={r.um} onChange={e => setRow(i,'um',e.target.value)} />
                       </td>
                       <td className="px-1 py-1 text-center">
                         <input type="checkbox" className="w-4 h-4 accent-amber-500"
                           checked={r.condicion_especial}
-                          onChange={e => setRow(i, 'condicion_especial', e.target.checked)}
-                          title="Condición especial (lote/caducidad)" />
+                          onChange={e => setRow(i,'condicion_especial',e.target.checked)}
+                          title="Material especial — habilita Lote, Caducidad, Disponible, Centro, Almacén" />
                       </td>
+                      {rows.some(r2 => r2.condicion_especial) && <>
+                        <td className="px-1 py-1 w-28">
+                          {r.condicion_especial ? <input className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs outline-none focus:border-amber-500 bg-amber-50"
+                            value={r.lote} onChange={e => setRow(i,'lote',e.target.value)} placeholder="Lote" /> : <span className="text-gray-200 text-xs px-2">—</span>}
+                        </td>
+                        <td className="px-1 py-1 w-32">
+                          {r.condicion_especial ? <input type="date" className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs outline-none focus:border-amber-500 bg-amber-50"
+                            value={r.caducidad} onChange={e => setRow(i,'caducidad',e.target.value)} /> : <span className="text-gray-200 text-xs px-2">—</span>}
+                        </td>
+                        <td className="px-1 py-1 w-24">
+                          {r.condicion_especial ? <input type="number" className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs outline-none focus:border-amber-500 bg-amber-50 text-right"
+                            value={r.disponible} onChange={e => setRow(i,'disponible',e.target.value)} /> : <span className="text-gray-200 text-xs px-2">—</span>}
+                        </td>
+                        <td className="px-1 py-1 w-20">
+                          {r.condicion_especial ? <input className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs outline-none focus:border-amber-500 bg-amber-50"
+                            value={r.centro} onChange={e => setRow(i,'centro',e.target.value)} placeholder="Centro" /> : <span className="text-gray-200 text-xs px-2">—</span>}
+                        </td>
+                        <td className="px-1 py-1 w-20">
+                          {r.condicion_especial ? <input className="w-full border border-amber-300 rounded px-2 py-1.5 text-xs outline-none focus:border-amber-500 bg-amber-50"
+                            value={r.almacen} onChange={e => setRow(i,'almacen',e.target.value)} placeholder="Almacén" /> : <span className="text-gray-200 text-xs px-2">—</span>}
+                        </td>
+                      </>}
                       <td className="px-1 py-1">
                         <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600 px-1">×</button>
                       </td>
@@ -437,7 +439,7 @@ export default function CrmVentaManualPage() {
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-gray-400 mt-2">☑ = Material con condición especial (lote/caducidad específica). Resaltado en amarillo.</p>
+            <p className="text-xs text-gray-400 mt-2">☑ Esp = Material con condición especial — activa columnas de Lote, Caducidad, Disponible, Centro y Almacén en esa fila.</p>
           </div>
 
           {/* Botones */}
