@@ -141,11 +141,9 @@ export default function MscListPage() {
 
     for (const s of rows) {
       const items = s.msc_items ?? []
-      const recepciones = s.msc_recepciones ?? []
-      const salidas = s.msc_salidas ?? []
 
-      for (const item of items) {
-        const precio = Number(item.precio_unitario ?? 0)
+      if (items.length === 0) {
+        // Si no hay items, agregar una fila con datos de la solicitud
         lines.push([
           s.numero_pedido_sap ?? '',
           s.asunto ?? '',
@@ -154,12 +152,27 @@ export default function MscListPage() {
           s.solicitante ?? '',
           s.destinatario_nombre ?? '',
           s.motivo ?? '',
-          item.codigo ?? '',
-          item.descripcion ?? '',
-          item.cantidad_pedida ?? '',
-          precio > 0 ? precio : '',
-          precio > 0 ? (precio * (item.cantidad_pedida ?? 0)).toFixed(2) : '',
+          '', '', '', '', '',
         ].join('\t'))
+      } else {
+        // Si hay items, crear una fila por cada item
+        for (const item of items) {
+          const precio = Number(item.precio_unitario ?? 0)
+          lines.push([
+            s.numero_pedido_sap ?? '',
+            s.asunto ?? '',
+            s.fecha ?? '',
+            s.estatus ?? '',
+            s.solicitante ?? '',
+            s.destinatario_nombre ?? '',
+            s.motivo ?? '',
+            item.codigo ?? '',
+            item.descripcion ?? '',
+            item.cantidad_pedida ?? '',
+            precio > 0 ? precio : '',
+            precio > 0 ? (precio * (item.cantidad_pedida ?? 0)).toFixed(2) : '',
+          ].join('\t'))
+        }
       }
     }
 
