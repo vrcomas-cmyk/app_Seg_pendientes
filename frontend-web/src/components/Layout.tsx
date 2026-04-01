@@ -53,7 +53,7 @@ export default function Layout() {
 
   const navLinks = [
     { to: '/tasks',   label: 'Pendientes', module: 'pendientes', always: true },
-    { to: '/crm',     label: 'CRM',        module: 'crm' },
+    { to: '/crm/pipeline', label: 'CRM',        module: 'crm' },
     { to: '/msc',     label: 'MSC',        module: 'msc' },
     { to: '/catalog', label: 'Catalogo',   module: 'catalogo' },
     { to: '/admin',   label: 'Admin',      module: 'admin' },
@@ -82,7 +82,7 @@ export default function Layout() {
 
           {/* Alertas */}
           {totalAlerts > 0 && hasModule('crm') && (
-            <button onClick={() => nav('/crm/offers')}
+            <button onClick={() => nav('/crm/pipeline')}
               className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition">
               <span className="text-lg">🔔</span>
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
