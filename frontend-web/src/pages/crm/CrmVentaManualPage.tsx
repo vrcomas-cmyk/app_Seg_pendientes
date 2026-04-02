@@ -125,27 +125,35 @@ export default function CrmVentaManualPage() {
   const addRow = () => setRows(prev => [...prev, emptyRow()])
   const removeRow = (i: number) => setRows(prev => prev.filter((_, idx) => idx !== i))
 
-  // Parsear pegado de Excel
+  // Parsear pegado de Excel con normalización de columnas
   const parsePaste = (text: string) => {
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (lines.length < 2) return
-    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase())
+    const rawHeaders = lines[0].split('\t').map(h => h.trim())
+    const headers = rawHeaders.map(h => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+
+    const idx = (names: string[]) => {
+      for (const n of names) {
+        const norm = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        const i = headers.findIndex(h => h === norm || h.includes(norm))
+        if (i >= 0) return i
+      }
+      return -1
+    }
+
     const parsed = lines.slice(1).map(line => {
       const cols = line.split('\t')
       const get = (names: string[]) => {
-        for (const n of names) {
-          const idx = headers.findIndex(h => h.includes(n))
-          if (idx >= 0) return cols[idx]?.trim() ?? ''
-        }
-        return ''
+        const i = idx(names); return i >= 0 ? cols[i]?.trim() ?? '' : ''
       }
+      const hasEsp = !!(get(['lote']) || get(['fecha de caducidad', 'caducidad']))
       return {
-        material:           get(['material solicitado', 'material base', 'material']),
-        descripcion:        get(['descripción solicitada', 'descripcion solicitada', 'descripción sugerida', 'descripcion']),
-        cantidad_pedida:    get(['cantidad pedido', 'cantidad pedida']),
-        cantidad_pendiente: get(['cantidad pendiente']),
+        material:           get(['material sugerido', 'material solicitado', 'material base', 'material']),
+        descripcion:        get(['descripcion sugerida', 'descripcion solicitada', 'descripcion']),
+        cantidad_pedida:    get(['cantidad pedido', 'ultima_compra_cliente', 'cantidad pedida']),
+        cantidad_pendiente: get(['cantidad pendiente', 'ultima_facturacion_destinatario']),
         cantidad_aceptada:  get(['cantidad a ofertar', 'cantidad ofertar']),
-        precio:             get(['precio']),
+        precio:             get(['precio_unitario_ultima', 'precio']),
         um:                 get(['um']),
         consumo_promedio:   get(['consumo promedio']),
         fuente:             get(['fuente']),
@@ -153,35 +161,45 @@ export default function CrmVentaManualPage() {
         lote:               get(['lote']),
         caducidad:          get(['fecha de caducidad', 'caducidad']),
         centro:             get(['centro sugerido', 'centro']),
-        almacen:            get(['almacén sugerido', 'almacen']),
-        condicion_especial: false,
+        almacen:            get(['almacen sugerido', 'almacen']),
+        condicion_especial: hasEsp,
       }
     }).filter(r => r.material)
     setPastePreview(parsed)
+
     if (parsed.length > 0) {
-      // Extraer datos generales de la primera fila
       const firstLine = lines[1].split('\t')
-      const h = headers
       const gk = (names: string[]) => {
-        for (const n of names) {
-          const idx = h.findIndex(hh => hh.includes(n))
-          if (idx >= 0) return firstLine[idx]?.trim() ?? ''
-        }
-        return ''
+        const i = idx(names); return i >= 0 ? firstLine[i]?.trim() ?? '' : ''
       }
+      const razonSocial = gk(['razon social'])
       setForm(prev => ({
         ...prev,
-        gpo_cliente:   gk(['gpo. cte', 'gpo cliente', 'grupo cliente']),
-        gpo_vendedor:  gk(['gpo.vdor', 'gpo vendedor', 'grupo vendedor']),
-        solicitante:   gk(['solicitante']),
-        destinatario:  gk(['destinatario']),
-        centro_pedido: gk(['centro pedido']),
-        almacen_pedido:gk(['almacén', 'almacen']),
-        folio_pedido:  gk(['pedido']),
-        fecha:         gk(['fecha']) || prev.fecha,
+        gpo_cliente:    gk(['gpo. cte', 'grp. cliente', 'gpo cliente', 'grupo cliente']),
+        gpo_vendedor:   gk(['gpo.vdor.', 'gpo. vdor.', 'gpo vendedor', 'grupo vendedor']),
+        solicitante:    gk(['solicitante']),
+        destinatario:   gk(['destinatario']),
+        centro_pedido:  gk(['centro pedido']),
+        almacen_pedido: gk(['almacen']),
+        folio_pedido:   gk(['pedido']),
+        fecha:          gk(['fecha']) || prev.fecha,
       }))
-      const rs = gk(['razón social', 'razon social'])
-      if (rs) setClienteInput(rs)
+      if (razonSocial) {
+        setClienteInput(razonSocial)
+        // Intentar autovinculación por razón social
+        supabase.from('crm_clients')
+          .select('id, solicitante, razon_social')
+          .ilike('razon_social', `%${razonSocial}%`)
+          .limit(1)
+          .then(({ data }) => {
+            if (data && data.length > 0) {
+              const c = data[0]
+              setClienteId(c.id)
+              setClienteInfo({ razon: c.razon_social || c.solicitante, noCliente: '' })
+              setClienteInput(c.razon_social || c.solicitante)
+            }
+          })
+      }
     }
   }
 

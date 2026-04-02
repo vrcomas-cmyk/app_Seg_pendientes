@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
@@ -116,6 +116,9 @@ type TabType = 'suggestions' | 'consumption'
 
 export default function CrmReportsPage() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const urlClienteId = searchParams.get('cliente_id')
+  const urlClienteNombre = searchParams.get('cliente_nombre')
   const [tab, setTab] = useState<TabType>('suggestions')
   const [rows, setRows] = useState<any[]>([])
   const [total, setTotal] = useState(0)
@@ -132,7 +135,10 @@ export default function CrmReportsPage() {
   const [solicitantes, setSolicitantes] = useState<string[]>([])
 
   // Filtros — se aplican en servidor
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('cliente_nombre') ? decodeURIComponent(params.get('cliente_nombre') ?? '') : ''
+  })
   const [fuente, setFuente] = useState('')
   const [centro, setCentro] = useState('')
   const [solicitante, setSolicitante] = useState('')

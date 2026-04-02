@@ -26,6 +26,9 @@ export default function CrmPipelinePage() {
   const [search, setSearch] = useState('')
   const [showNueva, setShowNueva] = useState(false)
   const [tipoNueva, setTipoNueva] = useState<'manual'|'excel'|''>('')
+  const [showBuscarCliente, setShowBuscarCliente] = useState(false)
+  const [buscarClienteInput, setBuscarClienteInput] = useState('')
+  const [buscarClienteSugs, setBuscarClienteSugs] = useState<any[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -63,6 +66,16 @@ export default function CrmPipelinePage() {
 
   const cuentaPorEtapa = (etapa: string) => ventas.filter(v => v.etapa === etapa).length
   const alertas = ventas.filter(v => diasDesdeVenta(v.fecha_venta) >= 7 && !['facturado','cancelado'].includes(v.etapa)).length
+
+  const buscarClienteSAP = async (q: string) => {
+    setBuscarClienteInput(q)
+    if (q.length < 2) { setBuscarClienteSugs([]); return }
+    const { data } = await supabase.from('crm_clients')
+      .select('id, solicitante, razon_social')
+      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
+      .limit(8)
+    setBuscarClienteSugs(data ?? [])
+  }
 
   const avanzarEtapa = async (venta: any) => {
     const idx = ETAPA_IDX[venta.etapa] ?? 0
@@ -275,6 +288,51 @@ export default function CrmPipelinePage() {
                   <p className="text-sm font-semibold text-gray-800">Desde sugerencias SAP</p>
                   <p className="text-xs text-gray-400 mt-0.5">Ir al cliente y usar botón "Crear venta" en pestaña Sugerencias</p>
                 </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal buscar cliente para SAP */}
+      {showBuscarCliente && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-sm">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
+              <h2 className="text-base font-bold text-gray-800">Buscar cliente</h2>
+              <button onClick={() => { setShowBuscarCliente(false); setBuscarClienteInput(''); setBuscarClienteSugs([]) }}
+                className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-sm text-gray-500">Busca por Solicitante o Razón Social para ver sus sugerencias SAP:</p>
+              <div className="relative">
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  placeholder="Nombre o razón social del cliente..."
+                  value={buscarClienteInput}
+                  onChange={e => buscarClienteSAP(e.target.value)}
+                  autoFocus />
+                {buscarClienteSugs.length > 0 && (
+                  <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-48 overflow-y-auto mt-0.5">
+                    {buscarClienteSugs.map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => {
+                          setShowBuscarCliente(false)
+                          setBuscarClienteInput('')
+                          setBuscarClienteSugs([])
+                          nav(`/crm/reports?cliente_id=${c.id}&cliente_nombre=${encodeURIComponent(c.razon_social ?? c.solicitante)}`)
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0">
+                        <span className="font-semibold text-gray-800">{c.razon_social ?? c.solicitante}</span>
+                        {c.razon_social && <span className="text-gray-400 ml-2">{c.solicitante}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => { setShowBuscarCliente(false); nav('/crm/reports') }}
+                className="text-xs text-gray-400 hover:text-gray-600 underline">
+                Ver todos los reportes sin filtrar
               </button>
             </div>
           </div>
