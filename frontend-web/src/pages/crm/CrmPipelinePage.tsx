@@ -271,16 +271,6 @@ export default function CrmPipelinePage() {
                   <p className="text-xs text-gray-400 mt-0.5">Llenar materiales, cantidades y precios uno a uno</p>
                 </div>
               </button>
-
-              <button onClick={() => { setShowNueva(false); nav('/crm/venta-excel') }}
-                className="w-full flex items-start gap-3 border border-gray-200 rounded-xl p-4 text-left hover:border-teal-400 hover:bg-teal-50 transition">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-700 font-bold text-sm">2</div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">Importar desde Excel</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Columnas: No. Cliente, Material, Cantidad, Precio</p>
-                </div>
-              </button>
-
               <button onClick={() => { setShowNueva(false); nav('/crm/reports') }}
                 className="w-full flex items-start gap-3 border border-gray-200 rounded-xl p-4 text-left hover:border-teal-400 hover:bg-teal-50 transition">
                 <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 text-purple-700 font-bold text-sm">3</div>
