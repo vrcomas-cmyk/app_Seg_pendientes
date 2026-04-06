@@ -260,6 +260,7 @@ export default function MscNewPage() {
       descripcion:         form.descripcion || null,
       destinatario_tipo:   form.destinatario_tipo,
       destinatario_nombre: form.destinatario_nombre || null,
+      razon_social_dest:   form.razon_social_dest || null,
       solicitante:         form.solicitante || null,
       client_id:           form.client_id || null,
       estatus,

@@ -349,9 +349,14 @@ export default function MscListPage() {
                     </span>
                   )}
                 </div>
-                {/* Fila 2: Para + Motivo + Fecha */}
+                {/* Fila 2: Solicitante + Para + Motivo + Fecha */}
                 <div className="flex gap-3 text-xs text-gray-400 flex-wrap mb-1">
-                  {s.destinatario_nombre && <span>Para: <strong className="text-gray-600">{s.destinatario_nombre}</strong></span>}
+                  {s.solicitante && <span>Solicita: <strong className="text-gray-600">{s.solicitante}</strong></span>}
+                  {(s.destinatario_nombre || s.razon_social_dest) && (
+                    <span>Para: <strong className="text-gray-600">
+                      {[s.destinatario_nombre, s.razon_social_dest].filter(Boolean).join(' — ')}
+                    </strong></span>
+                  )}
                   {s.motivo && <span>Motivo: {s.motivo}</span>}
                   <span>{new Date(s.created_at).toLocaleDateString('es-MX')}</span>
                 </div>
