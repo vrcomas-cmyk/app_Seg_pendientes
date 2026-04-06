@@ -354,7 +354,7 @@ export default function MscListPage() {
                   {s.solicitante && <span>Solicita: <strong className="text-gray-600">{s.solicitante}</strong></span>}
                   {(s.destinatario_nombre || s.razon_social_dest) && (
                     <span>Para: <strong className="text-gray-600">
-                      {[s.destinatario_nombre, s.razon_social_dest].filter(Boolean).join(' — ')}
+                      {s.razon_social_dest ? `${s.razon_social_dest}` : s.destinatario_nombre}
                     </strong></span>
                   )}
                   {s.motivo && <span>Motivo: {s.motivo}</span>}

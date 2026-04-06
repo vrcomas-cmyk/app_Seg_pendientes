@@ -159,7 +159,7 @@ function ClienteInput({ value, onChange, onSelect, razonSocial }: {
             <button key={c.id} type="button"
               className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0"
               onMouseDown={() => {
-                onSelect(c.id, c.solicitante, c.razon_social ?? '')
+                onSelect(c.id, c.razon_social ?? c.solicitante, c.solicitante)
                 setOpen(false)
               }}>
               <span className="font-semibold text-gray-800">{c.solicitante}</span>
