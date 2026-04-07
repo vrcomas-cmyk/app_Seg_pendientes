@@ -32,6 +32,9 @@ export interface MscSolicitud {
   items_activos_count?: number
   codigos_activos?: string
 
+  // Relaciones (Supabase)
+  msc_items?: MscItem[]
+
   // Auditoria
   created_by: string
   created_at: string
@@ -116,6 +119,12 @@ export interface MscEvidencia {
 export interface UserProfile {
   user_id: string
   email: string
+}
+
+export interface CrmClient {
+  id: string
+  solicitante: string
+  razon_social?: string
 }
 
 export interface InventoryItem {

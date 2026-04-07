@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
-import type { MscItem } from '../../types/msc'
+import type { MscItem, CrmClient } from '../../types/msc'
 
 interface ItemRow {
   codigo: string
@@ -121,7 +121,7 @@ function ClienteInput({ value, onChange, onSelect, razonSocial }: {
   onSelect: (id: string, nombre: string, razonSocial: string) => void
   razonSocial?: string
 }) {
-  const [suggestions, setSuggestions] = useState<Array<{ material: string, descripcion?: string }>>([])
+  const [suggestions, setSuggestions] = useState<CrmClient[]>([])
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 

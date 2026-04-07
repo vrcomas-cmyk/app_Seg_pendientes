@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
@@ -125,30 +125,58 @@ export default function MscDetailPage() {
 
   useEffect(() => { load() }, [load])
 
-  const cantRecibida = (itemId: string, codigo: string) =>
-    recepciones.reduce((acc, rec) => {
-      const ri = (rec.msc_recepcion_items ?? []).find((r: any) => r.item_id === itemId || r.codigo === codigo)
-      return acc + (ri?.cantidad_recibida ?? 0)
-    }, 0)
+  // Memoizar mapa de cantidades recibidas por item
+  const cantRecibidaMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const item of items) {
+      const total = recepciones.reduce((acc, rec) => {
+        const ri = (rec.msc_recepcion_items ?? []).find((r: any) => r.item_id === item.id || r.codigo === item.codigo)
+        return acc + (ri?.cantidad_recibida ?? 0)
+      }, 0)
+      map.set(item.id, total)
+    }
+    return map
+  }, [items, recepciones])
 
-  const cantEntregada = (codigo: string) =>
-    salidas.reduce((acc, sal) => {
-      const si = (sal.msc_salida_items ?? []).filter((s: any) => s.solicitud_id === id && s.codigo === codigo)
-      return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
-    }, 0)
+  // Helper para obtener cantidad recibida (ahora usa el mapa memoizado)
+  const cantRecibida = (itemId: string, codigo: string) => cantRecibidaMap.get(itemId) ?? 0
 
-  const activeItems = items.filter(i => i.estatus_linea !== 'cancelado')
+  // Memoizar mapa de cantidades entregadas por código
+  const cantEntregadaMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const item of items) {
+      const total = salidas.reduce((acc, sal) => {
+        const si = (sal.msc_salida_items ?? []).filter((s: any) => s.solicitud_id === id && s.codigo === item.codigo)
+        return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
+      }, 0)
+      map.set(item.codigo, total)
+    }
+    return map
+  }, [items, salidas, id])
 
-  const isTotalRecibido = activeItems.length > 0 && activeItems.every(item => {
-    const rec = cantRecibida(item.id, item.codigo)
-    return rec >= item.cantidad_pedida
-  })
+  const cantEntregada = (codigo: string) => cantEntregadaMap.get(codigo) ?? 0
 
-  const salidasSinEvidencia = salidas.filter(sal => {
-    const evSalida = evidencias.filter(e => e.salida_id === sal.id)
-    return evSalida.length === 0
-  })
-  const puedeCompletarse = isTotalRecibido && salidasSinEvidencia.length === 0 && salidas.length > 0
+  // Memoizar items activos
+  const activeItems = useMemo(() => items.filter(i => i.estatus_linea !== 'cancelado'), [items])
+
+  // Memoizar verificación de total recibido
+  const isTotalRecibido = useMemo(() =>
+    activeItems.length > 0 && activeItems.every(item => {
+      const rec = cantRecibidaMap.get(item.id) ?? 0
+      return rec >= item.cantidad_pedida
+    }), [activeItems, cantRecibidaMap])
+
+  // Memoizar salidas sin evidencia
+  const salidasSinEvidencia = useMemo(() =>
+    salidas.filter(sal => {
+      const evSalida = evidencias.filter(e => e.salida_id === sal.id)
+      return evSalida.length === 0
+    }), [salidas, evidencias])
+
+  // Memoizar verificación de completación
+  const puedeCompletarse = useMemo(() =>
+    isTotalRecibido && salidasSinEvidencia.length === 0 && salidas.length > 0,
+    [isTotalRecibido, salidasSinEvidencia, salidas.length])
 
   const checkAutoClose = useCallback(async () => {
     if (!sol || sol.estatus !== 'en_proceso') return
