@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
 import * as XLSX from 'xlsx'
+import type { MscSolicitud, UserProfile } from '../../types/msc'
 
 const ESTATUS_COLOR: Record<string, string> = {
   borrador:    'bg-gray-100 text-gray-500',
@@ -21,13 +22,13 @@ function formatMXN(n: number) {
 export default function MscListPage() {
   const nav = useNavigate()
   const { isAdmin, isGerente } = useRole()
-  const [solicitudes, setSolicitudes]     = useState<any[]>([])
+  const [solicitudes, setSolicitudes]     = useState<MscSolicitud[]>([])
   const [loading, setLoading]             = useState(true)
   const [filterEstatus, setFilterEstatus] = useState('activas')
   const [search, setSearch]               = useState('')
   const [viewMode, setViewMode]           = useState<'mine'|'team'|'all'|'user'>('mine')
-  const [teamUsers, setTeamUsers]         = useState<any[]>([])
-  const [allUsers, setAllUsers]           = useState<any[]>([])
+  const [teamUsers, setTeamUsers]         = useState<UserProfile[]>([])
+  const [allUsers, setAllUsers]           = useState<UserProfile[]>([])
   const [selectedUser, setSelectedUser]   = useState('')
   const [showReport, setShowReport]       = useState(false)
   const [reportFilters, setReportFilters] = useState({
@@ -50,7 +51,7 @@ export default function MscListPage() {
     } else if (viewMode === 'team' && isGerente) {
       const { data: teamData } = await supabase
         .from('user_teams').select('miembro_id').eq('gerente_id', user.id)
-      const memberIds = (teamData ?? []).map((t: any) => t.miembro_id)
+      const memberIds = (teamData ?? []).map((t) => t.miembro_id)
       query = query.in('created_by', [user.id, ...memberIds])
     } else if (viewMode === 'user' && selectedUser) {
       query = query.eq('created_by', selectedUser)
@@ -70,7 +71,7 @@ export default function MscListPage() {
       if (isGerente) {
         const { data: teamData } = await supabase
           .from('user_teams').select('miembro_id').eq('gerente_id', user.id)
-        const memberIds = (teamData ?? []).map((t: any) => t.miembro_id)
+        const memberIds = (teamData ?? []).map((t) => t.miembro_id)
         if (memberIds.length > 0) {
           const { data: profiles } = await supabase
             .from('user_profiles').select('user_id, email').in('user_id', memberIds)
@@ -113,7 +114,7 @@ export default function MscListPage() {
     }
 
     const { data: solData } = await q
-    let rows = solData ?? []
+    let rows: MscSolicitud[] = solData ?? []
 
     // Cargar items y usuarios por separado
     const ids = rows.map((s: any) => s.id)
@@ -123,7 +124,7 @@ export default function MscListPage() {
     if (ids.length > 0) {
       const { data: itemsData } = await supabase
         .from('msc_items').select('*').in('solicitud_id', ids)
-      ;(itemsData ?? []).forEach((item: any) => {
+      ;(itemsData ?? []).forEach((item) => {
         if (!itemsMap[item.solicitud_id]) itemsMap[item.solicitud_id] = []
         itemsMap[item.solicitud_id].push(item)
       })
@@ -131,7 +132,7 @@ export default function MscListPage() {
     if (createdByIds.length > 0) {
       const { data: profilesData } = await supabase
         .from('user_profiles').select('user_id, email').in('user_id', createdByIds)
-      ;(profilesData ?? []).forEach((p: any) => { emailMap[p.user_id] = p.email })
+      ;(profilesData ?? []).forEach((p) => { emailMap[p.user_id] = p.email })
     }
 
     const headers = [
@@ -143,7 +144,7 @@ export default function MscListPage() {
     const excelData: any[] = []
 
     for (const s of rows) {
-      const items = (itemsMap[s.id] ?? []).filter((i: any) => i.estatus_linea !== 'cancelado')
+      const items = (itemsMap[s.id] ?? []).filter((i) => i.estatus_linea !== 'cancelado')
 
       if (items.length === 0) {
         // Si no hay items, agregar una fila con datos de la solicitud
