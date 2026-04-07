@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
+import type { MscItem } from '../../types/msc'
 
 interface ItemRow {
   codigo: string
@@ -50,7 +51,7 @@ function MaterialInput({ value, onChange, onSelect, field }: {
   onSelect: (codigo: string, descripcion: string) => void
   field: 'codigo' | 'descripcion'
 }) {
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<Array<{ material: string, descripcion?: string }>>([])
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
@@ -120,7 +121,7 @@ function ClienteInput({ value, onChange, onSelect, razonSocial }: {
   onSelect: (id: string, nombre: string, razonSocial: string) => void
   razonSocial?: string
 }) {
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<Array<{ material: string, descripcion?: string }>>([])
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 

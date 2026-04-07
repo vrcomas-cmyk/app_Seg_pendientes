@@ -2,29 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
-
-interface SolEntry {
-  solicitudId: string
-  itemId: string
-  folioSap: string
-  folioEntrega: string
-  cantPedida: number
-  cantRecibida: number
-  cantEntregada: number
-  cantDisponible: number
-  fechaSolicitud: string
-}
-
-interface InventoryItem {
-  codigo: string
-  descripcion: string
-  solicitudes: SolEntry[]
-  totalPedido: number
-  totalRecibido: number
-  totalEntregado: number
-  totalDisponible: number
-  totalPendiente: number
-}
+import type { InventoryItem, SolEntry } from '../../types/msc'
 
 export default function MscInventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
@@ -39,7 +17,7 @@ export default function MscInventoryPage() {
   const [saving, setSaving] = useState(false)
   const [umMap, setUmMap] = useState<Record<string, string>>({})
   const [anexoBExtra, setAnexoBExtra] = useState({ direccion_ventas: '', observaciones: '', motivo: '' })
-  const [previewSalida, setPreviewSalida] = useState<any[] | null>(null)
+  const [previewSalida, setPreviewSalida] = useState<Array<any> | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
