@@ -42,7 +42,11 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session); setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      // Solo cerrar sesión si es un sign-out explícito, no por error de refresh
+      if (event === 'SIGNED_OUT') { setSession(null); return }
+      if (s) setSession(s)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
