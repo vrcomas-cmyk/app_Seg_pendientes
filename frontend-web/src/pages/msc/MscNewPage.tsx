@@ -258,6 +258,7 @@ export default function MscNewPage() {
       fecha:               form.fecha,
       motivo:              form.motivo || null,
       descripcion:         form.descripcion || null,
+      asunto:              form.asunto || null,
       destinatario_tipo:   form.destinatario_tipo,
       destinatario_nombre: form.destinatario_nombre || null,
       razon_social_dest:   form.razon_social_dest || null,
