@@ -109,6 +109,10 @@ export default function CrmPipelinePage() {
           <p className="text-sm text-gray-400 mt-0.5">Seguimiento por etapa — CRM</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => nav('/crm/cedis-seguimiento')}
+            className="border border-gray-300 text-gray-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50">
+            CEDIS
+          </button>
           <button onClick={() => nav('/crm/reports')}
             className="border border-gray-300 text-gray-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50">
             Reportes globales

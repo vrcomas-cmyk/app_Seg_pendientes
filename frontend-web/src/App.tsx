@@ -22,6 +22,7 @@ import CrmMaterialsTrackingPage from './pages/crm/CrmMaterialsTrackingPage'
 import CrmOfferItemsTrackingPage from './pages/crm/CrmOfferItemsTrackingPage'
 import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CrmVentaPage from './pages/crm/CrmVentaPage'
+import CrmCedisSeguimientoPage from './pages/crm/CrmCedisSeguimientoPage'
 import CrmVentaManualPage from './pages/crm/CrmVentaManualPage'
 import CrmVentaExcelPage from './pages/crm/CrmVentaExcelPage'
 import CrmPipelinePage from './pages/crm/CrmPipelinePage'
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="/crm/offers" element={<CrmOffersListPage />} />
         <Route path="/crm/ventas" element={<CrmVentasPage />} />
         <Route path="/crm/pipeline" element={<RouteGuard module="crm"><CrmPipelinePage /></RouteGuard>} />
+        <Route path="/crm/cedis-seguimiento" element={<RouteGuard module="crm"><CrmCedisSeguimientoPage /></RouteGuard>} />
         <Route path="/crm/venta-manual" element={<RouteGuard module="crm"><CrmVentaManualPage /></RouteGuard>} />
         <Route path="/crm/venta-excel" element={<RouteGuard module="crm"><CrmVentaExcelPage /></RouteGuard>} />
         <Route path="/crm/reports" element={<CrmReportsPage />} />
