@@ -11,14 +11,26 @@ export function useRole() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setLoading(false); return }
-      const { data } = await supabase.from('user_roles')
-        .select('role, modules').eq('user_id', user.id).single()
-      if (data) {
-        setUserRole({ role: data.role, modules: data.modules ?? ['pendientes'] })
-      } else {
+    const load = async (attempt = 0) => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setLoading(false); return }
+        const { data, error } = await supabase.from('user_roles')
+          .select('role, modules').eq('user_id', user.id).single()
+
+        // Si hay error 429 (rate limit), esperar y reintentar (máx 3 intentos)
+        if (error && 'status' in error && error.status === 429 && attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000))
+          return load(attempt + 1)
+        }
+
+        if (data) {
+          setUserRole({ role: data.role, modules: data.modules ?? ['pendientes'] })
+        } else {
+          setUserRole({ role: 'user', modules: ['pendientes'] })
+        }
+      } catch (e) {
+        console.error('Error loading user role:', e)
         setUserRole({ role: 'user', modules: ['pendientes'] })
       }
       setLoading(false)

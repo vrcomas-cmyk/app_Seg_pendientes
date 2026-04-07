@@ -21,17 +21,35 @@ export default function Layout() {
       supabase.from('user_profiles').upsert(
         { user_id: user.id, email: user.email },
         { onConflict: 'user_id' }
-      )
-      // Crear rol si no existe
-      supabase.from('user_roles')
-        .select('user_id').eq('user_id', user.id).single()
-        .then(({ data: roleData }) => {
+      ).then(({ error }) => {
+        if (error) console.error('Error upserting profile:', error)
+      })
+
+      // Crear rol si no existe (con retry en caso de rate limit)
+      const createRoleIfNeeded = async (attempt = 0) => {
+        try {
+          const { data: roleData, error } = await supabase.from('user_roles')
+            .select('user_id').eq('user_id', user.id).single()
+
+          // Si hay error 429 (rate limit), esperar y reintentar (máx 2 intentos)
+          if (error && 'status' in error && error.status === 429 && attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000))
+            return createRoleIfNeeded(attempt + 1)
+          }
+
           if (!roleData) {
             supabase.from('user_roles').insert({
               user_id: user.id, role: 'user', modules: ['pendientes']
+            }).then(({ error: insertError }) => {
+              if (insertError) console.error('Error creating role:', insertError)
             })
           }
-        })
+        } catch (e) {
+          console.error('Error checking role:', e)
+        }
+      }
+
+      createRoleIfNeeded()
     })
   }, [])
 
