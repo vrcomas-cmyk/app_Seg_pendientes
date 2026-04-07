@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, getCachedUser } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
+const API_URL = import.meta.env.VITE_API_URL
 import * as XLSX from 'xlsx'
 import { parseCSVText, readFileAsText } from '../../utils/parseCSV'
 import toast from 'react-hot-toast'
@@ -67,10 +68,9 @@ export default function CrmSuggestionsImportPage() {
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
-      // Forzar refresh de sesión antes de operaciones masivas
-      await supabase.auth.refreshSession()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { toast.error('Sesión expirada. Recarga la página.'); setLoading(null); return }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toast.error('Sesión expirada. Recarga la página.'); setLoading(null); return }
+      const user = session.user
       const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
       const { data: clients } = await supabase.from('crm_clients')

@@ -9,6 +9,7 @@ import { historyRoutes } from './routes/history'
 import { calendarRoutes } from './routes/calendar'
 import { attachmentRoutes } from './routes/attachments'
 import adminRoutes from './routes/admin'
+import suggestionsRoutes from './routes/suggestions'
 
 const app = Fastify({ logger: true })
 
@@ -57,6 +58,7 @@ async function main() {
   await app.register(historyRoutes, { prefix: '/api' })
   await app.register(attachmentRoutes, { prefix: '/api' })
   await app.register(calendarRoutes, { prefix: '' })
+  await app.register(suggestionsRoutes, { prefix: '/api' })
 
   try {
     await app.listen({ port: 3001, host: '0.0.0.0' })
