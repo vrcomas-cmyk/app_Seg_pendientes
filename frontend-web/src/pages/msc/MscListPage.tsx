@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
 import * as XLSX from 'xlsx'
 import type { MscSolicitud, UserProfile } from '../../types/msc'
+import { debounce } from '../../utils/debounce'
 
 const ESTATUS_COLOR: Record<string, string> = {
   borrador:    'bg-gray-100 text-gray-500',
@@ -26,6 +27,7 @@ export default function MscListPage() {
   const [loading, setLoading]             = useState(true)
   const [filterEstatus, setFilterEstatus] = useState('activas')
   const [search, setSearch]               = useState('')
+  const [searchInput, setSearchInput]     = useState('') // Raw input, se debounce a search
   const [viewMode, setViewMode]           = useState<'mine'|'team'|'all'|'user'>('mine')
   const [teamUsers, setTeamUsers]         = useState<UserProfile[]>([])
   const [allUsers, setAllUsers]           = useState<UserProfile[]>([])
@@ -63,6 +65,12 @@ export default function MscListPage() {
   }, [viewMode, selectedUser, isGerente])
 
   useEffect(() => { load() }, [load])
+
+  // Debounce de búsqueda
+  useEffect(() => {
+    const handler = debounce((q: string) => setSearch(q), 300)
+    handler(searchInput)
+  }, [searchInput])
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -314,7 +322,7 @@ export default function MscListPage() {
         <input
           className="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-teal-400 bg-white"
           placeholder="Buscar folio, cliente, codigo..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+          value={searchInput} onChange={e => setSearchInput(e.target.value)} />
       </div>
 
       {/* Lista */}
