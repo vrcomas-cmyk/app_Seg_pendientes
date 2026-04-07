@@ -269,13 +269,12 @@ export default function MscDetailPage() {
       toast.success('Material cancelado')
     } else if (cancelModal?.type === 'all') {
       const itemIds = activeItems.map(i => i.id)
-      for (const iid of itemIds) {
-        await supabase.from('msc_items').update({
-          estatus_linea: 'cancelado',
-          motivo_cancelacion: cancelMotivo,
-          cancelado_at: now,
-        }).eq('id', iid)
-      }
+      // Batch update en lugar de loop secuencial (evita rate limiting)
+      await supabase.from('msc_items').update({
+        estatus_linea: 'cancelado',
+        motivo_cancelacion: cancelMotivo,
+        cancelado_at: now,
+      }).in('id', itemIds)
       toast.success('Solicitud cancelada')
     }
     setCancelModal(null); setCancelMotivo('')
@@ -287,7 +286,8 @@ export default function MscDetailPage() {
       await supabase.from('msc_solicitudes').update({ estatus: 'cancelada' }).eq('id', id)
       toast('Solicitud cancelada — todos los materiales fueron cancelados')
     }
-    load()
+    // Esperar un poco antes de recargar para evitar too many requests
+    setTimeout(() => load(), 500)
   }
 
   // Reactivar item
