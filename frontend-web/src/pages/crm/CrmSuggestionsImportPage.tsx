@@ -67,7 +67,10 @@ export default function CrmSuggestionsImportPage() {
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
-      const user = await getCachedUser()
+      // Forzar refresh de sesión antes de operaciones masivas
+      await supabase.auth.refreshSession()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { toast.error('Sesión expirada. Recarga la página.'); setLoading(null); return }
       const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
       const { data: clients } = await supabase.from('crm_clients')
