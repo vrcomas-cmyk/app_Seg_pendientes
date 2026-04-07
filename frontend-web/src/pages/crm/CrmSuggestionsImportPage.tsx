@@ -281,7 +281,12 @@ export default function CrmSuggestionsImportPage() {
         inserted += Math.min(BATCH, inserts.length - i)
         // Agregar pequeño delay entre lotes para evitar rate limiting
         if (i + BATCH < inserts.length) {
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await new Promise(resolve => setTimeout(resolve, 300))
+          // Refrescar token cada 1000 registros
+          if (i > 0 && i % 1000 === 0) {
+            await supabase.auth.refreshSession()
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
         }
       }
 
