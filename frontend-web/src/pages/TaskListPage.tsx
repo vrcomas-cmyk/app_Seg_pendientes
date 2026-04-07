@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '../lib/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, getCachedUser } from '../lib/supabase'
 
 function daysDiff(date: string) {
   const today = new Date(); today.setHours(0,0,0,0)
@@ -49,7 +48,7 @@ export default function TaskListPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     if (!user) { setLoading(false); return }
     const { data } = await supabase.from('tasks')
       .select('*')

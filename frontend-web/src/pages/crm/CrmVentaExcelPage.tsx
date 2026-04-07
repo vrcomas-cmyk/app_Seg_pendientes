@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
@@ -30,7 +29,7 @@ export default function CrmVentaExcelPage() {
   const guardar = async () => {
     if (rows.length === 0) return toast.error('No hay materiales para importar')
     setSaving(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
 
     // Agrupar por no_cliente
     const grupos: Record<string, any[]> = {}

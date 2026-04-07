@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
-import { useAuth } from '../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, getCachedUser } from '../lib/supabase'
 import UsersPanel from '../components/UsersPanel'
 import { parseExcelFile } from '../utils/importClients'
 import { parseCSVText, readFileAsText } from '../utils/parseCSV'
@@ -99,7 +98,7 @@ export default function AdminPage() {
     try {
       const parsed = await parseExcelFile(file)
       setProgress(`${parsed.length} clientes detectados. Cargando existentes...`)
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
 
       const { data: existing } = await supabase.from('crm_clients')
         .select('id, solicitante, telefonos, correos').eq('created_by', user!.id)
@@ -204,7 +203,7 @@ export default function AdminPage() {
       const rows = await readRows(file)
       if (!rows.length) { toast.error('Archivo vacío'); setLoading(false); return }
       setProgress(`${rows.length} filas. Preparando...`)
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const { data: clients } = await supabase.from('crm_clients').select('id, solicitante').eq('created_by', user?.id)
       const clientMap: Record<string, string> = {}
       clients?.forEach(c => { clientMap[c.solicitante] = c.id })
@@ -310,7 +309,7 @@ export default function AdminPage() {
       const rows = await readRows(file)
       if (!rows.length) { toast.error('Archivo vacío'); setLoading(false); return }
       setProgress(`${rows.length} filas detectadas.`)
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const { data: clients } = await supabase.from('crm_clients').select('id, solicitante').eq('created_by', user?.id)
       const clientMap: Record<string, string> = {}
       clients?.forEach(c => { clientMap[c.solicitante] = c.id })
@@ -397,7 +396,7 @@ export default function AdminPage() {
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
       if (!rows.length) { toast.error('Archivo vacío'); setLoading(false); return }
 
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const colP = (r: any, ...keys: string[]) => {
         for (const k of keys) {
           const found = Object.keys(r).find(rk => rk.trim() === k.trim())
@@ -435,7 +434,7 @@ export default function AdminPage() {
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
       if (!rows.length) { toast.error('Archivo vacío'); setLoading(false); return }
 
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const parseMoney = (v: any) => {
         if (!v) return null
         const n = parseFloat(String(v).replace(/[$,\s]/g,''))

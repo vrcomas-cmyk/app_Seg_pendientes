@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 const VENTA_ESTATUS = [
@@ -104,7 +103,7 @@ export default function CrmVentasPage() {
   const saveUpdate = async () => {
     if (!activeItem) return
     setSaving(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     await supabase.from("crm_offer_items").update({
       estatus:              newEstatus || activeItem.estatus,
       folio_entrega_salida: newFolio || null,
@@ -161,7 +160,7 @@ export default function CrmVentasPage() {
     if (!cedisForm.centro_origen || !cedisForm.centro_destino || !cedisForm.cantidad)
       return toast.error('Centro origen, destino y cantidad son obligatorios')
     setSavingCedis(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     const lotes = activeItem.lotes ?? []
     const primerLote = lotes[0] ?? {}
     const clientId = activeItem.crm_offers?.crm_clients?.id

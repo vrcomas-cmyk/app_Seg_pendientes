@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import CedisTable from '../../components/CedisTable'
 
@@ -82,7 +81,7 @@ export default function CrmCedisPage() {
       return toast.error('Completa los campos obligatorios: origen, destino, código y cantidad')
     }
     setLoading(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
 
     const { data: req, error } = await supabase.from('crm_cedis_requests').insert({
       order_id:        orderId,
@@ -122,7 +121,7 @@ export default function CrmCedisPage() {
   }
 
   const updateEstatus = async (reqId: string, estatusActual: string, nuevoEstatus: string, comentario: string) => {
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     await supabase.from('crm_cedis_requests').update({ estatus: nuevoEstatus }).eq('id', reqId)
     await supabase.from('crm_cedis_history').insert({
       request_id:      reqId,

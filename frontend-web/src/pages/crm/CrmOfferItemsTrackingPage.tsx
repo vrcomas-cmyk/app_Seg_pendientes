@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { Link } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 const ITEM_ESTATUS = [
@@ -97,7 +96,7 @@ export default function CrmOfferItemsTrackingPage() {
   const applyBatch = async () => {
     if (selected.length === 0) return
     setSavingBatch(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     const updates: any = { estatus: batchEstatus }
     if (batchEstatus === 'facturado' && batchFactura) {
       updates.numero_factura = batchFactura
@@ -143,7 +142,7 @@ export default function CrmOfferItemsTrackingPage() {
       return toast.error('Centro origen, destino y cantidad son obligatorios')
 
     setSavingCedis(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     const item = items.find(i => i.id === cedisItemId)!
     const lotes = typeof item.lotes === 'string' ? JSON.parse(item.lotes) : (item.lotes ?? [])
     const primerLote = lotes[0] ?? {}

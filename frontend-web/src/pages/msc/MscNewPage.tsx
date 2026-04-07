@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import type { MscItem, CrmClient } from '../../types/msc'
 
@@ -255,7 +254,7 @@ export default function MscNewPage() {
     const validRows = rows.filter(r => r.codigo && r.cantidad_pedida)
     if (validRows.length === 0) return toast.error('Agrega al menos un material')
     setSaving(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     const { data: sol, error } = await supabase.from('msc_solicitudes').insert({
       fecha:               form.fecha,
       motivo:              form.motivo || null,

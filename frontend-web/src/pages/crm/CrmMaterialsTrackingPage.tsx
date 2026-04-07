@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import CedisRequestForm from '../../components/CedisRequestForm'
 import { Link } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 const ESTATUS_COLOR: Record<string, string> = {
@@ -159,7 +158,7 @@ export default function CrmMaterialsTrackingPage() {
   const confirmarRecepcion = async () => {
     if (selectedReqs.length === 0) return toast.error('Selecciona al menos un requerimiento')
     setSaving(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
 
     for (const reqId of selectedReqs) {
       const req = selectedGroup!.requests.find(r => r.id === reqId)!
@@ -203,7 +202,7 @@ export default function CrmMaterialsTrackingPage() {
   }
 
   const updateEstatusIndividual = async (req: CedisRequest, estatus: string) => {
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     await supabase.from('crm_cedis_requests').update({ estatus }).eq('id', req.id)
     await supabase.from('crm_cedis_history').insert({
       request_id: req.id, estatus_anterior: req.estatus,

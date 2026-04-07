@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 
@@ -217,7 +216,7 @@ export default function CrmVentaManualPage() {
     if (validRows.length === 0) return toast.error('Agrega al menos un material con cantidad')
     setSaving(true)
     try {
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const { data: offer, error } = await supabase.from('crm_offers').insert({
         client_id:      clienteId,
         tipo:           'venta_directa',

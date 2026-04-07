@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import * as XLSX from 'xlsx'
 import { parseCSVText, readFileAsText } from '../../utils/parseCSV'
 import toast from 'react-hot-toast'
@@ -68,7 +67,7 @@ export default function CrmSuggestionsImportPage() {
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
       const { data: clients } = await supabase.from('crm_clients')

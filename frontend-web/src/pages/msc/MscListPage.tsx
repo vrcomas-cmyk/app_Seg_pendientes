@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
 import * as XLSX from 'xlsx'
 import type { MscSolicitud, UserProfile } from '../../types/msc'
@@ -42,7 +41,7 @@ export default function MscListPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     if (!user) { setLoading(false); return }
 
     let query = supabase
@@ -75,7 +74,7 @@ export default function MscListPage() {
 
   useEffect(() => {
     const loadUsers = async () => {
-      const { user } = useAuth(); // injected
+      const user = await getCachedUser()
       if (!user) return
       if (isGerente) {
         const { data: teamData } = await supabase
@@ -108,7 +107,7 @@ export default function MscListPage() {
   // Descargar reporte Excel
   const downloadReport = async () => {
     setDownloadingReport(true)
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     if (!user) return
 
     // Query solicitudes desde la vista

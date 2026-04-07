@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useAuth } from '../../lib/AuthContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 
@@ -301,7 +300,7 @@ export default function CrmReportsPage() {
       return
     }
 
-    const { user } = useAuth(); // injected
+    const user = await getCachedUser()
     let offersCreated = 0
 
     for (const clientId of clientIds) {
