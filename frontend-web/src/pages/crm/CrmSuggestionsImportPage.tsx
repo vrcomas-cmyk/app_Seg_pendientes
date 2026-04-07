@@ -225,6 +225,8 @@ export default function CrmSuggestionsImportPage() {
       setProgress(p => ({ ...p, [type]: 'Eliminando registros anteriores...' }))
 
       if (type === 'suggestions') {
+        // Agregar delay antes de eliminar para evitar rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500))
         const [rejectedRes, offeredRes] = await Promise.all([
           supabase.from('crm_offer_items').select('source_id').eq('estatus', 'rechazado'),
           supabase.from('crm_offered_suggestions').select('source_id'),
@@ -264,6 +266,10 @@ export default function CrmSuggestionsImportPage() {
         }
       }
 
+      // Agregar delay después de los deletes para evitar rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      setProgress(p => ({ ...p, [type]: `Insertando registros...` }))
+
       // Insertar en lotes de 200
       const BATCH = 200
       let inserted = 0
@@ -272,7 +278,14 @@ export default function CrmSuggestionsImportPage() {
         const { error } = await supabase.from(table).insert(inserts.slice(i, i + BATCH))
         if (error) { toast.error(error.message); setLoading(null); return }
         inserted += Math.min(BATCH, inserts.length - i)
+        // Agregar pequeño delay entre lotes para evitar rate limiting
+        if (i + BATCH < inserts.length) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       }
+
+      // Esperar antes de confirmar para evitar rate limiting en operaciones posteriores
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       setCounts(c => ({ ...c, [type]: { inserted, deleted } }))
       setProgress(p => ({ ...p, [type]: '' }))
