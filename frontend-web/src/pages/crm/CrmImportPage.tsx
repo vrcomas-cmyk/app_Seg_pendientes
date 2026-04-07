@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { parseExcelFile } from '../../utils/importClients'
@@ -40,7 +41,7 @@ export default function CrmImportPage() {
     setImporting(true)
     setProgress('Cargando clientes existentes...')
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     let created = 0, updated = 0
 
     // Cargar TODOS los clientes existentes en una sola consulta

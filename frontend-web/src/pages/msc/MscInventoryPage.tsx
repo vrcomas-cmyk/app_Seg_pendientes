@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -142,7 +143,7 @@ export default function MscInventoryPage() {
     if (!salidaForm.receptor_nombre.trim()) return toast.error('El nombre del receptor es obligatorio')
     if (!previewSalida) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const { data: sal } = await supabase.from('msc_salidas').insert({
       ...salidaForm, created_by: user?.id,
     }).select().single()

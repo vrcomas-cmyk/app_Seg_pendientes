@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, getCachedUser } from '../lib/supabase'
 
 interface UserRole {
   role: string
@@ -13,7 +13,7 @@ export function useRole() {
   useEffect(() => {
     const load = async (attempt = 0) => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = await getCachedUser()
         if (!user) { setLoading(false); return }
         const { data, error } = await supabase.from('user_roles')
           .select('role, modules').eq('user_id', user.id).single()

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import * as XLSX from 'xlsx'
@@ -67,7 +68,7 @@ export default function CrmSuggestionsImportPage() {
 
       setProgress(p => ({ ...p, [type]: `${rows.length} filas detectadas. Preparando...` }))
 
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
       const table = type === 'suggestions' ? 'crm_suggestions' : 'crm_consumption'
 
       const { data: clients } = await supabase.from('crm_clients')

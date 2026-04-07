@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -66,7 +67,7 @@ export default function CrmFollowupPage() {
 
   const saveFollowup = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     if (isNew) {
       const { data, error } = await supabase.from('crm_followups').insert({
         ...form,
@@ -96,7 +97,7 @@ export default function CrmFollowupPage() {
 
   const createLinkedTask = async () => {
     if (!taskForm.title.trim()) return toast.error('Escribe el título del pendiente')
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const fid = savedFollowupId ?? followupId
 
     const dueDate = taskForm.due_date || suggestDate(taskForm.priority)

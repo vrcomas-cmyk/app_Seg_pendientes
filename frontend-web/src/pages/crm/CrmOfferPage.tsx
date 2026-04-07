@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -104,7 +105,7 @@ export default function CrmOfferPage() {
   }
 
   const createOffer = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const { data: o, error } = await supabase.from('crm_offers').insert({
       client_id: clientId, tipo: sourceType ?? 'manual',
       estatus: 'borrador', notas: offerNotes || null, created_by: user?.id,
@@ -153,7 +154,7 @@ export default function CrmOfferPage() {
       if (error) { toast.error(error.message); setSaving(false); return }
 
       // Crear pedidos CRM para items con número de pedido
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
       const pedidosUnicos = [...new Set(newItems.filter(it => it.numero_pedido).map(it => it.numero_pedido))]
       for (const numPedido of pedidosUnicos) {
         const { data: exists } = await supabase.from('crm_orders')
@@ -201,7 +202,7 @@ export default function CrmOfferPage() {
       setItems(prev => prev.map(it => it.id === item.id ? parsed : it))
       if (activeItem?.id === item.id) setActiveItem(parsed)
 
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
       await supabase.from('crm_offer_item_history').insert({
         item_id: item.id, estatus_anterior: item.estatus,
         estatus_nuevo: nuevoEstatus,
@@ -243,7 +244,7 @@ export default function CrmOfferPage() {
   const updateItemEstatus = async () => {
     if (!activeItem?.id) return
     setSavingItem(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const isAceptado = newEstatus === 'aceptado'
     await supabase.from('crm_offer_items').update({
       estatus: newEstatus, aceptado: isAceptado,

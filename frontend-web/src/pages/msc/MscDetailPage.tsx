@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
@@ -224,7 +225,7 @@ export default function MscDetailPage() {
       if (!window.confirm(`Cantidades exceden lo pedido:\n\n${detalle}\n\n¿Confirmar?`)) return
     }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const { data: rec } = await supabase.from('msc_recepciones').insert({
       solicitud_id: id, ...recepForm, created_by: user?.id,
     }).select().single()
@@ -243,7 +244,7 @@ export default function MscDetailPage() {
   }
 
   const subirEvidencia = async (file: File, tipo: string, salidaId?: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const ext = file.name.split('.').pop()
     const path = `msc/${id}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('attachments').upload(path, file)
@@ -336,7 +337,7 @@ export default function MscDetailPage() {
     if (!cedisHeader.centro_origen || !cedisHeader.centro_destino)
       return toast.error('Centro origen y destino son obligatorios')
     setSavingCedis(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     for (const item of selected) {
       const r = cedisRows[item.id]
       const { data: req } = await supabase.from('crm_cedis_requests').insert({
@@ -527,7 +528,7 @@ export default function MscDetailPage() {
     if (itemsValidos.length === 0) return toast.error('Ingresa al menos una cantidad')
     if (!salidaForm2.receptor_nombre.trim()) return toast.error('El nombre del receptor es obligatorio')
     setSavingSalida(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     const { data: sal } = await supabase.from('msc_salidas').insert({
       receptor_nombre: salidaForm2.receptor_nombre,

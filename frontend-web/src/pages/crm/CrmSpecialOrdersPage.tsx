@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -198,7 +199,7 @@ export default function CrmSpecialOrdersPage() {
   const handleSavePasted = async () => {
     if (pastedRows.length === 0) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     const inserts = pastedRows.map(r => ({
       gpo_cliente:            r.gpo_cliente || null,
@@ -257,7 +258,7 @@ export default function CrmSpecialOrdersPage() {
   const updateStatus = async () => {
     if (!detailId || !newEstatus) return
     setUpdatingStatus(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     await supabase.from('crm_special_order_history').insert({
       order_id: detailId, estatus_anterior: detail?.estatus,
       estatus_nuevo: newEstatus, comentario: newComentario || null, created_by: user?.id,
@@ -274,7 +275,7 @@ export default function CrmSpecialOrdersPage() {
 
   const saveSale = async () => {
     if (!detailId) return
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     await supabase.from('crm_special_orders').update({
       cantidad_vendida: saleForm.cantidad_vendida ? parseFloat(saleForm.cantidad_vendida) : null,
       precio_venta:     saleForm.precio_venta ? parseFloat(saleForm.precio_venta) : null,
@@ -300,7 +301,7 @@ export default function CrmSpecialOrdersPage() {
     if (!cedisForm.centro_origen || !cedisForm.centro_destino || !cedisForm.cantidad) {
       return toast.error('Centro origen, destino y cantidad son obligatorios')
     }
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     // Crear requerimiento CEDIS — necesita un order_id
     // Creamos una orden CRM temporal si no existe

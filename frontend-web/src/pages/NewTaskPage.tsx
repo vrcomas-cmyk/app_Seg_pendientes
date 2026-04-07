@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -20,7 +21,7 @@ export default function NewTaskPage() {
   const handleSubmit = async () => {
     if (!form.title || !form.requested_by) return toast.error('Título y solicitante son obligatorios')
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const { error } = await supabase.from('tasks').insert({ ...form, created_by: user?.id })
     if (error) { toast.error(error.message); setLoading(false); return }
     toast.success('Pendiente creado')

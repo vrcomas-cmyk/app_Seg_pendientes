@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -300,7 +301,7 @@ export default function CrmReportsPage() {
       return
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     let offersCreated = 0
 
     for (const clientId of clientIds) {

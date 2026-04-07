@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
@@ -41,7 +42,7 @@ export default function MscListPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     if (!user) { setLoading(false); return }
 
     let query = supabase
@@ -74,7 +75,7 @@ export default function MscListPage() {
 
   useEffect(() => {
     const loadUsers = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
       if (!user) return
       if (isGerente) {
         const { data: teamData } = await supabase
@@ -107,7 +108,7 @@ export default function MscListPage() {
   // Descargar reporte Excel
   const downloadReport = async () => {
     setDownloadingReport(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     if (!user) return
 
     // Query solicitudes desde la vista

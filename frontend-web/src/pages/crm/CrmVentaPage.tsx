@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -215,7 +216,7 @@ export default function CrmVentaPage() {
   const generateOffer = async () => {
     if (selected.length === 0) return toast.error('Selecciona al menos un material')
     setCreating(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     const allData = tab === 'sugerencias' ? suggestions : consumption
     const selectedRows = allData.filter(r => selected.includes(r.id))

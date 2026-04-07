@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
+import { supabase, getCachedUser } from '../lib/supabase'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
@@ -55,7 +56,7 @@ export default function CatalogPage() {
       setPreview(rows.slice(0, 5))
       setShowPreview(true)
 
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
 
       // Helper para limpiar valor monetario: " $1.14 " → 1.14
       const parseMoney = (v: any) => {

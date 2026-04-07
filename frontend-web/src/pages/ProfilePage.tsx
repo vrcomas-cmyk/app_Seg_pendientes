@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
@@ -29,7 +30,7 @@ export default function ProfilePage() {
 
     if (!isRecovery) {
       // Verificar contraseña actual
-      const { data: { user } } = await supabase.auth.getUser()
+      const { user } = useAuth(); // injected
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: user?.email ?? '',
         password: current,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -38,7 +39,7 @@ export default function CrmOrderPage() {
     if (materials.length === 0) return toast.error('No hay materiales aceptados')
     setLoading(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     // Crear pedido
     const { data: order, error } = await supabase.from('crm_orders').insert({

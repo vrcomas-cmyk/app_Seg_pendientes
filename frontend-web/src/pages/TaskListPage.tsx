@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useAuth } from '../lib/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -48,7 +49,7 @@ export default function TaskListPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     if (!user) { setLoading(false); return }
     const { data } = await supabase.from('tasks')
       .select('*')

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
+import { useAuth } from '../lib/AuthContext'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, getCachedUser } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
 import FileUploader from '../components/FileUploader'
 import ImageLightbox from '../components/ImageLightbox'
@@ -83,7 +84,7 @@ export default function TaskDetailPage() {
 
   const changeStatus = async (status: string, removeCalendar: boolean) => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     if (removeCalendar && hasCalendarEvent) await cancelEvent(id!)
     await supabase.from('tasks').update({ status }).eq('id', id)
     await supabase.from('task_history').insert({
@@ -365,7 +366,7 @@ export default function TaskDetailPage() {
                 <p className="text-xs text-gray-500 mb-2">Pegar captura</p>
                 <PasteImageUploader taskId={task.id} mode="zone"
                   onUploaded={async (url, name) => {
-                    const { data: { user } } = await supabase.auth.getUser()
+                    const { user } = useAuth(); // injected
                     await supabase.from('attachments').insert({
                       task_id: task.id, url, name, type: 'image', created_by: user?.id,
                     })
@@ -410,7 +411,7 @@ export default function TaskDetailPage() {
                 <PasteImageUploader taskId={task.id} mode="comment"
                   placeholder="Comentario o Ctrl+V para imagen..."
                   onComment={async (text, images) => {
-                    const { data: { user } } = await supabase.auth.getUser()
+                    const { user } = useAuth(); // injected
                     const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
                     await supabase.from('task_history').insert({
                       task_id: id, comment: text + imageLinks, created_by: user?.id,
@@ -467,7 +468,7 @@ export default function TaskDetailPage() {
               <PasteImageUploader taskId={task.id} mode="comment"
                 placeholder="Comentario o Ctrl+V para imagen..."
                 onComment={async (text, images) => {
-                  const { data: { user } } = await supabase.auth.getUser()
+                  const { user } = useAuth(); // injected
                   const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
                   await supabase.from('task_history').insert({
                     task_id: id, comment: text + imageLinks,
@@ -536,7 +537,7 @@ export default function TaskDetailPage() {
                   <p className="text-xs text-gray-400 mb-2">Pegar captura</p>
                   <PasteImageUploader taskId={task.id} mode="zone"
                     onUploaded={async (url, name) => {
-                      const { data: { user } } = await supabase.auth.getUser()
+                      const { user } = useAuth(); // injected
                       await supabase.from('attachments').insert({
                         task_id: task.id, url, name, type: 'image', created_by: user?.id,
                       })

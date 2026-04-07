@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -31,7 +32,7 @@ export default function CrmNewClientPage() {
   const handleSubmit = async () => {
     if (!form.solicitante.trim()) return toast.error('El solicitante es obligatorio')
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
     const { data, error } = await supabase.from('crm_clients').insert({
       ...form,
       telefonos:  phones,

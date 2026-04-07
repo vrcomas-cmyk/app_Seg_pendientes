@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useAuth } from '../../lib/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import * as XLSX from 'xlsx'
@@ -29,7 +30,7 @@ export default function CrmVentaExcelPage() {
   const guardar = async () => {
     if (rows.length === 0) return toast.error('No hay materiales para importar')
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = useAuth(); // injected
 
     // Agrupar por no_cliente
     const grupos: Record<string, any[]> = {}
