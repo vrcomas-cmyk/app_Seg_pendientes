@@ -83,6 +83,20 @@ export default function CrmCedisSeguimientoPage() {
     setRows(prev => prev.map(r => r.id === id ? { ...r, comentarios } : r))
   }
 
+  // Normalizar fecha a YYYY-MM-DD
+  const normalizarFecha = (val: string): string | null => {
+    if (!val) return null
+    // DD.MM.YYYY o DD/MM/YYYY
+    const dotMatch = val.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/)
+    if (dotMatch) return `${dotMatch[3]}-${dotMatch[2].padStart(2,'0')}-${dotMatch[1].padStart(2,'0')}`
+    // YYYY-MM-DD ya correcto
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val
+    // Intentar Date parse
+    const d = new Date(val)
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
+    return null
+  }
+
   // Parser Excel
   const parsePaste = (text: string) => {
     const lines = text.trim().split('\n').filter(l => l.trim())
@@ -128,8 +142,8 @@ export default function CrmCedisSeguimientoPage() {
     if (!user) { toast.error('Sin sesión — recarga la página'); setSaving(false); return }
     const insertData = pasteRows.map(r => ({ ...r, origen: 'manual', created_by: user.id,
       cantidad: parseFloat(r.cantidad) || null,
-      fecha_solicitud: r.fecha_solicitud || null,
-      fecha_caducidad: r.fecha_caducidad || null,
+      fecha_solicitud: normalizarFecha(r.fecha_solicitud),
+      fecha_caducidad: normalizarFecha(r.fecha_caducidad),
     }))
     const { error: errPaste } = await supabase.from('crm_cedis_requests').insert(insertData)
     if (errPaste) { toast.error('Error: ' + errPaste.message); setSaving(false); return }
@@ -147,8 +161,8 @@ export default function CrmCedisSeguimientoPage() {
     if (!user) { toast.error('Sin sesión — recarga la página'); setSaving(false); return }
     const insertManual = valid.map(r => ({ ...r, origen: 'manual', created_by: user.id,
       cantidad: parseFloat(r.cantidad) || null,
-      fecha_solicitud: r.fecha_solicitud || null,
-      fecha_caducidad: r.fecha_caducidad || null,
+      fecha_solicitud: normalizarFecha(r.fecha_solicitud),
+      fecha_caducidad: normalizarFecha(r.fecha_caducidad),
     }))
     const { error: errManual } = await supabase.from('crm_cedis_requests').insert(insertManual)
     if (errManual) { toast.error('Error: ' + errManual.message); setSaving(false); return }
