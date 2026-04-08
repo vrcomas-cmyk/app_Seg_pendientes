@@ -125,13 +125,14 @@ export default function CrmCedisSeguimientoPage() {
     setSaving(true)
     const { data: { session: s1 } } = await supabase.auth.getSession()
     const user = s1?.user
-    await supabase.from('crm_cedis_requests').insert(
-      pasteRows.map(r => ({ ...r, origen: 'manual', created_by: user?.id,
-        cantidad: parseFloat(r.cantidad) || null,
-        fecha_solicitud: r.fecha_solicitud || null,
-        fecha_caducidad: r.fecha_caducidad || null,
-      }))
-    )
+    if (!user) { toast.error('Sin sesión — recarga la página'); setSaving(false); return }
+    const insertData = pasteRows.map(r => ({ ...r, origen: 'manual', created_by: user.id,
+      cantidad: parseFloat(r.cantidad) || null,
+      fecha_solicitud: r.fecha_solicitud || null,
+      fecha_caducidad: r.fecha_caducidad || null,
+    }))
+    const { error: errPaste } = await supabase.from('crm_cedis_requests').insert(insertData)
+    if (errPaste) { toast.error('Error: ' + errPaste.message); setSaving(false); return }
     toast.success(`${pasteRows.length} registros importados`)
     setShowPaste(false); setPasteText(''); setPasteRows([])
     load(); setSaving(false)
@@ -143,13 +144,14 @@ export default function CrmCedisSeguimientoPage() {
     setSaving(true)
     const { data: { session: s2 } } = await supabase.auth.getSession()
     const user = s2?.user
-    await supabase.from('crm_cedis_requests').insert(
-      valid.map(r => ({ ...r, origen: 'manual', created_by: user?.id,
-        cantidad: parseFloat(r.cantidad) || null,
-        fecha_solicitud: r.fecha_solicitud || null,
-        fecha_caducidad: r.fecha_caducidad || null,
-      }))
-    )
+    if (!user) { toast.error('Sin sesión — recarga la página'); setSaving(false); return }
+    const insertManual = valid.map(r => ({ ...r, origen: 'manual', created_by: user.id,
+      cantidad: parseFloat(r.cantidad) || null,
+      fecha_solicitud: r.fecha_solicitud || null,
+      fecha_caducidad: r.fecha_caducidad || null,
+    }))
+    const { error: errManual } = await supabase.from('crm_cedis_requests').insert(insertManual)
+    if (errManual) { toast.error('Error: ' + errManual.message); setSaving(false); return }
     toast.success(`${valid.length} solicitudes creadas`)
     setShowNueva(false); setManualRows([emptyRow()])
     load(); setSaving(false)
