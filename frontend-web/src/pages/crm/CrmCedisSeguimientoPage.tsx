@@ -83,18 +83,41 @@ export default function CrmCedisSeguimientoPage() {
     setRows(prev => prev.map(r => r.id === id ? { ...r, comentarios } : r))
   }
 
-  // Normalizar fecha a YYYY-MM-DD
+  // Normalizar fecha a YYYY-MM-DD para DB, mostrar como DD/MM/YYYY en UI
+  const MESES: Record<string,string> = {
+    ene:'01',feb:'02',mar:'03',abr:'04',may:'05',jun:'06',
+    jul:'07',ago:'08',sep:'09',oct:'10',nov:'11','dic':'12',
+    jan:'01',apr:'04',aug:'08',dec:'12'
+  }
   const normalizarFecha = (val: string): string | null => {
-    if (!val) return null
+    if (!val || !val.trim()) return null
+    const v = val.trim()
+    // DD-MMM-YY o DD-MMM-YYYY ej: 27-feb-26 o 27-feb-2026
+    const mmmMatch = v.match(/^(\d{1,2})[-\/](\w{3})[-\/](\d{2,4})$/i)
+    if (mmmMatch) {
+      const mes = MESES[mmmMatch[2].toLowerCase()]
+      if (mes) {
+        let anio = mmmMatch[3]
+        if (anio.length === 2) anio = parseInt(anio) >= 50 ? '19'+anio : '20'+anio
+        return `${anio}-${mes}-${mmmMatch[1].padStart(2,'0')}`
+      }
+    }
     // DD.MM.YYYY o DD/MM/YYYY
-    const dotMatch = val.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/)
-    if (dotMatch) return `${dotMatch[3]}-${dotMatch[2].padStart(2,'0')}-${dotMatch[1].padStart(2,'0')}`
+    const dmyMatch = v.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/)
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2,'0')}-${dmyMatch[1].padStart(2,'0')}`
     // YYYY-MM-DD ya correcto
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val
-    // Intentar Date parse
-    const d = new Date(val)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+    // Intentar Date parse como último recurso
+    const d = new Date(v)
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
     return null
+  }
+
+  const formatFechaUI = (val: string | null): string => {
+    if (!val) return '—'
+    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`
+    return val
   }
 
   // Parser Excel
@@ -254,7 +277,7 @@ export default function CrmCedisSeguimientoPage() {
                 const orig = ORIGEN_CHIP[r.origen ?? 'manual']
                 return (
                   <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2 whitespace-nowrap">{r.fecha_solicitud?.split('T')[0] ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{formatFechaUI(r.fecha_solicitud)}</td>
                     <td className="px-3 py-2">{r.centro_origen}</td>
                     <td className="px-3 py-2">{r.almacen_origen}</td>
                     <td className="px-3 py-2">{r.centro_destino}</td>
@@ -264,7 +287,7 @@ export default function CrmCedisSeguimientoPage() {
                     <td className="px-3 py-2 text-right">{r.cantidad}</td>
                     <td className="px-3 py-2">{r.um}</td>
                     <td className="px-3 py-2">{r.lote}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{r.fecha_caducidad}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{formatFechaUI(r.fecha_caducidad)}</td>
                     <td className="px-3 py-2">{r.no_ud}</td>
                     <td className="px-3 py-2">{r.delivery}</td>
                     <td className="px-3 py-2">
