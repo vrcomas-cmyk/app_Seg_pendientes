@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, getCachedUser } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 const ETAPAS = [
@@ -40,7 +40,8 @@ export default function CrmCedisSeguimientoPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const user = await getCachedUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) { setLoading(false); return }
     const { data } = await supabase
       .from('crm_cedis_requests')
@@ -122,7 +123,8 @@ export default function CrmCedisSeguimientoPage() {
   const guardarPaste = async () => {
     if (pasteRows.length === 0) return
     setSaving(true)
-    const user = await getCachedUser()
+    const { data: { session: s1 } } = await supabase.auth.getSession()
+    const user = s1?.user
     await supabase.from('crm_cedis_requests').insert(
       pasteRows.map(r => ({ ...r, origen: 'manual', created_by: user?.id,
         cantidad: parseFloat(r.cantidad) || null,
@@ -139,7 +141,8 @@ export default function CrmCedisSeguimientoPage() {
     const valid = manualRows.filter(r => r.codigo && r.cantidad)
     if (valid.length === 0) return toast.error('Agrega al menos un material con código y cantidad')
     setSaving(true)
-    const user = await getCachedUser()
+    const { data: { session: s2 } } = await supabase.auth.getSession()
+    const user = s2?.user
     await supabase.from('crm_cedis_requests').insert(
       valid.map(r => ({ ...r, origen: 'manual', created_by: user?.id,
         cantidad: parseFloat(r.cantidad) || null,
