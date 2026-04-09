@@ -248,6 +248,10 @@ export default function MscListPage() {
             className="border border-teal-600 text-teal-600 px-3 py-2 rounded-xl text-sm font-semibold hover:bg-teal-50">
             Inventario
           </Link>
+          <button onClick={() => nav('/msc/entrada-manual')}
+            className="border border-teal-600 text-teal-600 px-3 py-2 rounded-xl text-sm font-semibold hover:bg-teal-50">
+            + Entrada manual
+          </button>
           <button onClick={() => nav('/msc/nueva')}
             className="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-teal-700 shadow-sm">
             + Nueva

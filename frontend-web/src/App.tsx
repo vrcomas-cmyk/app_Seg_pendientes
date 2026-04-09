@@ -23,6 +23,7 @@ import CrmOfferItemsTrackingPage from './pages/crm/CrmOfferItemsTrackingPage'
 import CrmOfferPage from './pages/crm/CrmOfferPage'
 import CrmVentaPage from './pages/crm/CrmVentaPage'
 import CrmProspectosPage from './pages/crm/CrmProspectosPage'
+import MscEntradaManualPage from './pages/msc/MscEntradaManualPage'
 import CrmCedisSeguimientoPage from './pages/crm/CrmCedisSeguimientoPage'
 import CrmVentaManualPage from './pages/crm/CrmVentaManualPage'
 import CrmVentaExcelPage from './pages/crm/CrmVentaExcelPage'
@@ -94,6 +95,7 @@ export default function App() {
         <Route path="/admin" element={<RouteGuard module="admin"><AdminPage /></RouteGuard>} />
         <Route path="/msc" element={<RouteGuard module="msc"><MscListPage /></RouteGuard>} />
         <Route path="/msc/nueva" element={<MscNewPage />} />
+        <Route path="/msc/entrada-manual" element={<MscEntradaManualPage />} />
         <Route path="/msc/inventario" element={<MscInventoryPage />} />
         <Route path="/msc/:id" element={<MscDetailPage />} />
       </Route>
