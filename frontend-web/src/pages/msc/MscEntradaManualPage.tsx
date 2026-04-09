@@ -155,7 +155,6 @@ export default function MscEntradaManualPage() {
         precio_unitario: parseFloat(r.precio_unitario) || null,
         total:           (parseFloat(r.cantidad) || 0) * (parseFloat(r.precio_unitario) || 0) || null,
         estatus_linea:   'activo',
-        created_by:      session.user.id,
       }))
     )
     if (itemsErr) { toast.error('Error en items: ' + itemsErr.message); setSaving(false); return }
