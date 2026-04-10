@@ -693,6 +693,7 @@ export default function MscDetailPage() {
           <div><p className="text-gray-400">Para</p><p className="font-medium text-gray-700">{sol.destinatario_nombre ?? '-'}</p></div>
           <div><p className="text-gray-400">Aprobado por</p><p className="font-medium text-gray-700">{sol.aprobado_por ?? '-'}</p></div>
           {sol.solicitante && <div><p className="text-gray-400">Solicitante</p><p className="font-medium text-gray-700">{sol.solicitante}</p></div>}
+          {sol.asunto && <div className="col-span-2 sm:col-span-3"><p className="text-gray-400">Asunto / Referencia</p><p className="font-medium text-indigo-700">{sol.asunto}</p></div>}
         </div>
 
         {sol.estatus === 'en_proceso' && isTotalRecibido && salidasSinEvidencia.length > 0 && (

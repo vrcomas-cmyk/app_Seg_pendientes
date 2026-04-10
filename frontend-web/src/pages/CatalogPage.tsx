@@ -9,6 +9,10 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [search, setSearch] = useState('')
+  const [conversiones, setConversiones] = useState<Record<string, any[]>>({})
+  const [showConvModal, setShowConvModal] = useState<any>(null)
+  const [convForm, setConvForm] = useState({ um_destino: '', factor: '' })
+  const [savingConv, setSavingConv] = useState(false)
   const [preview, setPreview] = useState<any[]>([])
   const [showPreview, setShowPreview] = useState(false)
   const [isTeamMember, setIsTeamMember] = useState(false)
@@ -28,6 +32,14 @@ export default function CatalogPage() {
   const load = async () => {
     setLoading(true)
     let q = supabase.from('catalog_materials').select('*').order('material')
+    // Cargar conversiones
+    const { data: convData } = await supabase.from('catalog_conversiones').select('*')
+    const convMap: Record<string, any[]> = {}
+    ;(convData ?? []).forEach((c: any) => {
+      if (!convMap[c.material]) convMap[c.material] = []
+      convMap[c.material].push(c)
+    })
+    setConversiones(convMap)
     if (search) q = q.or(`material.ilike.%${search}%,descripcion.ilike.%${search}%`)
     const { data } = await q
     setMaterials(data ?? [])
@@ -117,6 +129,31 @@ export default function CatalogPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  const guardarConversion = async () => {
+    if (!convForm.um_destino || !convForm.factor) return
+    setSavingConv(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('catalog_conversiones').upsert({
+      material: showConvModal.material,
+      um_origen: showConvModal.um,
+      um_destino: convForm.um_destino.toUpperCase(),
+      factor: parseFloat(convForm.factor),
+      created_by: session?.user.id,
+    }, { onConflict: 'material,um_origen,um_destino' })
+    // Recargar conversiones
+    const { data: convData } = await supabase.from('catalog_conversiones').select('*')
+    const convMap: Record<string, any[]> = {}
+    ;(convData ?? []).forEach((c: any) => {
+      if (!convMap[c.material]) convMap[c.material] = []
+      convMap[c.material].push(c)
+    })
+    setConversiones(convMap)
+    setShowConvModal(null)
+    setConvForm({ um_destino: '', factor: '' })
+    setSavingConv(false)
+    toast.success('Conversión guardada')
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
@@ -187,7 +224,7 @@ export default function CatalogPage() {
             <table className="text-xs border-collapse w-full">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  {['Material','Descripción','UM','Tipo','Sector','Costo','Lista 02','Lista 06','Condición'].map(h => (
+                  {['Material','Descripción','UM','Tipo','Sector','Costo','Lista 02','Lista 06','Condición','Conversiones'].map(h => (
                     <th key={h} className="text-left px-3 py-2.5 text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">
                       {h}
                     </th>
@@ -212,6 +249,19 @@ export default function CatalogPage() {
                       {m.lista_06 != null ? `$${Number(m.lista_06).toLocaleString('es-MX')}` : '—'}
                     </td>
                     <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{m.condicion}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <div className="flex gap-1 flex-wrap items-center">
+                        {(conversiones[m.material] ?? []).map((c: any) => (
+                          <span key={c.id} className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full border border-teal-200">
+                            1 {c.um_origen} = {c.factor} {c.um_destino}
+                          </span>
+                        ))}
+                        <button onClick={() => { setShowConvModal(m); setConvForm({ um_destino: '', factor: '' }) }}
+                          className="text-xs text-teal-600 hover:text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full hover:bg-teal-50">
+                          + conv
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -220,5 +270,63 @@ export default function CatalogPage() {
         )}
       </div>
     </div>
+
+    {/* Modal conversión */}
+    {showConvModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-sm">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-800">Agregar conversión</h2>
+            <button onClick={() => setShowConvModal(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="bg-gray-50 rounded-lg p-3 text-sm">
+              <p className="font-mono font-semibold text-gray-800">{showConvModal.material}</p>
+              <p className="text-gray-500 text-xs mt-0.5">{showConvModal.descripcion}</p>
+              <p className="text-gray-500 text-xs mt-1">UM base: <strong>{showConvModal.um}</strong></p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-2">
+                1 <strong>{showConvModal.um}</strong> equivale a:
+              </label>
+              <div className="flex gap-2 items-center">
+                <input type="number" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  placeholder="Cantidad (ej: 20)"
+                  value={convForm.factor} onChange={e => setConvForm(x => ({ ...x, factor: e.target.value }))} />
+                <input className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 uppercase"
+                  placeholder="UM (ej: PI)"
+                  value={convForm.um_destino} onChange={e => setConvForm(x => ({ ...x, um_destino: e.target.value }))} />
+              </div>
+              {convForm.factor && convForm.um_destino && (
+                <p className="text-xs text-teal-600 mt-2 font-medium">
+                  1 {showConvModal.um} = {convForm.factor} {convForm.um_destino.toUpperCase()}
+                </p>
+              )}
+            </div>
+            {/* Conversiones existentes */}
+            {(conversiones[showConvModal.material] ?? []).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Conversiones existentes:</p>
+                <div className="flex gap-1 flex-wrap">
+                  {(conversiones[showConvModal.material] ?? []).map((c: any) => (
+                    <span key={c.id} className="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded-full border border-teal-200">
+                      1 {c.um_origen} = {c.factor} {c.um_destino}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex justify-between pt-2">
+              <button onClick={() => setShowConvModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm">Cancelar</button>
+              <button onClick={guardarConversion} disabled={savingConv || !convForm.factor || !convForm.um_destino}
+                className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50">
+                {savingConv ? 'Guardando...' : 'Guardar conversión'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }
