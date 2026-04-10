@@ -55,7 +55,6 @@ export default function MscDetailPage() {
   const [convModal, setConvModal] = useState<{codigo: string; umSalida: string; umStock: string; onConfirm: (factor: number) => void} | null>(null)
   const [convCache, setConvCache] = useState<Record<string, number>>({})
   const [umBaseMap, setUmBaseMap] = useState<Record<string, string>>({})
-  const [umBaseMap, setUmBaseMap] = useState<Record<string, string>>({}) // key: "codigo|umOrigen|umDestino"
   const [convLoading, setConvLoading] = useState<Record<string, boolean>>({})
   const [convFactor, setConvFactor] = useState('')
   const [salidaUms, setSalidaUms] = useState<Record<string, string>>({})
