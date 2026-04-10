@@ -328,5 +328,6 @@ export default function CatalogPage() {
         </div>
       </div>
     )}
+    </>
   )
 }
