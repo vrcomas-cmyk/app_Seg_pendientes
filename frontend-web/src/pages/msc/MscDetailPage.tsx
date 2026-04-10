@@ -1170,7 +1170,7 @@ export default function MscDetailPage() {
       {/* Panel nueva salida — 3 pasos */}
       {showSalidaPanel && (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-start justify-center pt-4 px-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-3xl max-h-screen overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-4xl max-h-screen overflow-y-auto">
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-base font-bold text-gray-800">Nueva salida de material</h2>
@@ -1210,7 +1210,7 @@ export default function MscDetailPage() {
                           return (
                             <tr key={item.id} className="border-b border-gray-100">
                               <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
-                              <td className="px-3 py-2 text-gray-600 max-w-xs">
+                              <td className="px-3 py-2 text-gray-600" style={{minWidth:'180px', maxWidth:'280px'}}>
                                 {item.descripcion}
                                 {/* Preview desgaste inline */}
                                 {(() => {
@@ -1413,7 +1413,7 @@ export default function MscDetailPage() {
       {/* Panel nueva salida — 3 pasos */}
       {showSalidaPanel && (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-start justify-center pt-4 px-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-3xl max-h-screen overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-4xl max-h-screen overflow-y-auto">
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-base font-bold text-gray-800">Nueva salida de material</h2>
