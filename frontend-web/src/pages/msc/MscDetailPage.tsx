@@ -53,7 +53,8 @@ export default function MscDetailPage() {
   const [salidaStep, setSalidaStep] = useState(1)
   const [salidaQtys, setSalidaQtys] = useState<Record<string, string>>({})
   const [convModal, setConvModal] = useState<{codigo: string; umSalida: string; umStock: string; onConfirm: (factor: number) => void} | null>(null)
-  const [convCache, setConvCache] = useState<Record<string, number>>({}) // key: "codigo|umOrigen|umDestino"
+  const [convCache, setConvCache] = useState<Record<string, number>>({})
+  const [umBaseMap, setUmBaseMap] = useState<Record<string, string>>({}) // key: "codigo|umOrigen|umDestino"
   const [convLoading, setConvLoading] = useState<Record<string, boolean>>({})
   const [convFactor, setConvFactor] = useState('')
   const [salidaUms, setSalidaUms] = useState<Record<string, string>>({})
@@ -1198,7 +1199,7 @@ export default function MscDetailPage() {
                                 {(() => {
                                   const qty = parseFloat(salidaQtys[item.id] ?? '0')
                                   const umSal = salidaUms[item.codigo] ?? ''
-                                  const umBase = item.um ?? ''
+                                  const umBase = umBaseMap[item.codigo] ?? (item as any).um ?? ''
                                   const key = `${item.codigo}|${umBase}|${umSal}`
                                   const factor = convCache[key] ?? (convCache[`${item.codigo}|${umSal}|${umBase}`] ? 1/convCache[`${item.codigo}|${umSal}|${umBase}`] : null)
                                   if (qty > 0 && umSal && umBase && umSal !== umBase) {
@@ -1243,9 +1244,10 @@ export default function MscDetailPage() {
                                     value={salidaQtys[item.id] ?? ''}
                                     onChange={e => {
                                       setSalidaQtys(prev => ({ ...prev, [item.id]: e.target.value }))
-                                      const umSal = salidaUms[item.codigo] ?? item.um ?? ''
-                                      if (umSal && item.um && umSal !== item.um) {
-                                        void buscarConvFactor(item.codigo, item.um, umSal)
+                                      const umSal = salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? ''
+                                      const umB2 = umBaseMap[item.codigo] ?? (item as any).um ?? ''
+                                      if (umSal && umB2 && umSal !== umB2) {
+                                        void buscarConvFactor(item.codigo, umB2, umSal)
                                       }
                                     }} />
                                 ) : <span className="text-gray-300 text-xs">Sin stock</span>}
@@ -1253,12 +1255,13 @@ export default function MscDetailPage() {
                               <td className="px-3 py-2">
                                 <input type="text"
                                   className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 uppercase"
-                                  value={salidaUms[item.codigo] ?? item.um ?? ''}
+                                  value={salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? (item as any).um ?? ''}
                                   onChange={e => {
                                     const newUm = e.target.value.toUpperCase()
                                     setSalidaUms(prev => ({ ...prev, [item.codigo]: newUm }))
-                                    if (newUm.length >= 2 && item.um && newUm !== item.um) {
-                                      void buscarConvFactor(item.codigo, item.um, newUm)
+                                    const umB = umBaseMap[item.codigo] ?? (item as any).um ?? ''
+                                    if (newUm.length >= 2 && umB && newUm !== umB) {
+                                      void buscarConvFactor(item.codigo, umB, newUm)
                                     }
                                   }} />
                               </td>
