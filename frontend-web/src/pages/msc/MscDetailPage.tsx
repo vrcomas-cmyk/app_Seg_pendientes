@@ -694,6 +694,7 @@ export default function MscDetailPage() {
   const stepIdx = ESTATUS_FLOW.indexOf(sol.estatus)
 
   return (
+    <>
     <div className="w-full max-w-5xl mx-auto">
       <button onClick={() => nav('/msc')}
         className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1 min-h-[44px]">
@@ -1701,5 +1702,6 @@ export default function MscDetailPage() {
       )}
     </div>
     {renderConvModal()}
+    </>
   )
 }
