@@ -1226,8 +1226,8 @@ export default function MscDetailPage() {
                                   onChange={e => {
                                     const newUm = e.target.value.toUpperCase()
                                     setSalidaUms(prev => ({ ...prev, [item.codigo]: newUm }))
-                                    if (newUm && item.um && newUm !== item.um) {
-                                      buscarConvFactor(item.codigo, item.um, newUm)
+                                    if (newUm.length >= 2 && item.um && newUm !== item.um) {
+                                      void buscarConvFactor(item.codigo, item.um, newUm)
                                     }
                                   }} />
                               </td>
