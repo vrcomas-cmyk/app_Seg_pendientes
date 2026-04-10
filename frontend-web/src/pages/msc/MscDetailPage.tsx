@@ -1193,6 +1193,13 @@ export default function MscDetailPage() {
               {salidaStep === 1 && (
                 <div>
                   <p className="text-sm text-gray-500 mb-4">Selecciona los materiales y cantidades a entregar. Solo se puede entregar lo recibido en este pedido.</p>
+                  {/* DEBUG TEMPORAL */}
+                  <div className="text-xs bg-yellow-50 border border-yellow-200 rounded p-2 mb-2">
+                    <p>umBaseMap: {JSON.stringify(umBaseMap)}</p>
+                    <p>salidaUms: {JSON.stringify(salidaUms)}</p>
+                    <p>convCache: {JSON.stringify(convCache)}</p>
+                    <p>salidaQtys: {JSON.stringify(salidaQtys)}</p>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
