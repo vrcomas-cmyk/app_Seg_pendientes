@@ -524,9 +524,7 @@ export default function MscDetailPage() {
     setSalidaQtys({})
     setSalidaStep(1)
     setSalidaCreada(null)
-    setShowSalidaPanel(true)
-    // Cargar UMs base del catálogo
-    setSalidaUms({})
+    // Cargar UMs base y luego abrir modal
     const _codigos = activeItems.map((i: any) => i.codigo).filter(Boolean)
     if (_codigos.length > 0) {
       supabase.from('catalog_materials').select('material, um').in('material', _codigos)
@@ -534,7 +532,15 @@ export default function MscDetailPage() {
           const _map: Record<string, string> = {}
           ;(data ?? []).forEach((r: any) => { if (r.um) _map[r.material] = r.um })
           setUmBaseMap(_map)
+          // Inicializar salidaUms con la UM base de cada item
+          const _ums: Record<string, string> = {}
+          activeItems.forEach((i: any) => { if (_map[i.codigo]) _ums[i.codigo] = _map[i.codigo] })
+          setSalidaUms(_ums)
+          setShowSalidaPanel(true)
         })
+    } else {
+      setSalidaUms({})
+      setShowSalidaPanel(true)
     }
   }
 
