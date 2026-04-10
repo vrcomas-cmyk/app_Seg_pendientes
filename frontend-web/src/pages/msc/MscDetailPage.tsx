@@ -53,6 +53,8 @@ export default function MscDetailPage() {
   const [salidaStep, setSalidaStep] = useState(1)
   const [salidaQtys, setSalidaQtys] = useState<Record<string, string>>({})
   const [convModal, setConvModal] = useState<{codigo: string; umSalida: string; umStock: string; onConfirm: (factor: number) => void} | null>(null)
+  const [convCache, setConvCache] = useState<Record<string, number>>({}) // key: "codigo|umOrigen|umDestino"
+  const [convLoading, setConvLoading] = useState<Record<string, boolean>>({})
   const [convFactor, setConvFactor] = useState('')
   const [salidaUms, setSalidaUms] = useState<Record<string, string>>({})
   const [salidaForm2, setSalidaForm2] = useState({
@@ -1165,7 +1167,46 @@ export default function MscDetailPage() {
                           return (
                             <tr key={item.id} className="border-b border-gray-100">
                               <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
-                              <td className="px-3 py-2 text-gray-600 max-w-32 truncate">{item.descripcion}</td>
+                              <td className="px-3 py-2 text-gray-600 max-w-32 truncate">
+                                {item.descripcion}
+                                {/* Preview desgaste inline */}
+                                {(() => {
+                                  const qty = parseFloat(salidaQtys[item.id] ?? '0')
+                                  const umSal = salidaUms[item.codigo] ?? ''
+                                  const umBase = item.um ?? ''
+                                  const key = `${item.codigo}|${umBase}|${umSal}`
+                                  const factor = convCache[key] ?? (convCache[`${item.codigo}|${umSal}|${umBase}`] ? 1/convCache[`${item.codigo}|${umSal}|${umBase}`] : null)
+                                  if (qty > 0 && umSal && umBase && umSal !== umBase) {
+                                    if (!factor) {
+                                      // Disparar búsqueda
+                                      if (!convLoading[key]) buscarConvFactor(item.codigo, umBase, umSal)
+                                      return <p className="text-xs text-amber-500 mt-0.5">Buscando conversión {umBase}→{umSal}...</p>
+                                    }
+                                    const stockEnUmSal = disp * factor
+                                    const remanente = stockEnUmSal - qty
+                                    return (
+                                      <div className="mt-1 bg-teal-50 border border-teal-200 rounded px-2 py-1">
+                                        <p className="text-xs text-teal-700 font-medium">
+                                          Stock: {disp} {umBase} = {(disp * factor).toFixed(2)} {umSal}
+                                        </p>
+                                        <p className={`text-xs font-semibold ${remanente >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                          Quedan: {remanente.toFixed(2)} {umSal} {factor !== 1 ? `(${(remanente/factor).toFixed(3)} ${umBase})` : ''}
+                                        </p>
+                                        {remanente < 0 && <p className="text-xs text-red-500">Excede el stock disponible</p>}
+                                      </div>
+                                    )
+                                  }
+                                  if (qty > 0 && umSal && umBase && umSal === umBase) {
+                                    const remanente = disp - qty
+                                    return (
+                                      <p className={`text-xs mt-0.5 font-medium ${remanente >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+                                        Quedan: {remanente} {umBase}
+                                      </p>
+                                    )
+                                  }
+                                  return null
+                                })()}
+                              </td>
                               <td className="px-3 py-2 text-right text-blue-600 font-medium">{rec}</td>
                               <td className="px-3 py-2 text-right text-teal-600 font-medium">{ent}</td>
                               <td className="px-3 py-2 text-right">
@@ -1173,7 +1214,7 @@ export default function MscDetailPage() {
                               </td>
                               <td className="px-3 py-2">
                                 {disp > 0 ? (
-                                  <input type="number" min="0" max={disp}
+                                  <input type="number" min="0"
                                     className="w-20 border border-teal-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-500 text-right"
                                     placeholder="0"
                                     value={salidaQtys[item.id] ?? ''}
@@ -1182,9 +1223,15 @@ export default function MscDetailPage() {
                               </td>
                               <td className="px-3 py-2">
                                 <input type="text"
-                                  className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                                  value={salidaUms[item.codigo] ?? ''}
-                                  onChange={e => setSalidaUms(prev => ({ ...prev, [item.codigo]: e.target.value }))} />
+                                  className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 uppercase"
+                                  value={salidaUms[item.codigo] ?? item.um ?? ''}
+                                  onChange={e => {
+                                    const newUm = e.target.value.toUpperCase()
+                                    setSalidaUms(prev => ({ ...prev, [item.codigo]: newUm }))
+                                    if (newUm && item.um && newUm !== item.um) {
+                                      buscarConvFactor(item.codigo, item.um, newUm)
+                                    }
+                                  }} />
                               </td>
                             </tr>
                           )
