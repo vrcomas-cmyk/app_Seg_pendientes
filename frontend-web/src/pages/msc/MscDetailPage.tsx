@@ -1178,9 +1178,7 @@ export default function MscDetailPage() {
                                   const factor = convCache[key] ?? (convCache[`${item.codigo}|${umSal}|${umBase}`] ? 1/convCache[`${item.codigo}|${umSal}|${umBase}`] : null)
                                   if (qty > 0 && umSal && umBase && umSal !== umBase) {
                                     if (!factor) {
-                                      // Disparar búsqueda
-                                      if (!convLoading[key]) buscarConvFactor(item.codigo, umBase, umSal)
-                                      return <p className="text-xs text-amber-500 mt-0.5">Buscando conversión {umBase}→{umSal}...</p>
+                                      return <p className="text-xs text-amber-500 mt-0.5">Sin conversión {umBase}→{umSal} — escríbela en UM</p>
                                     }
                                     const stockEnUmSal = disp * factor
                                     const remanente = stockEnUmSal - qty
