@@ -526,6 +526,29 @@ export default function MscDetailPage() {
     setShowSalidaPanel(true)
   }
 
+  const buscarConvFactor = async (codigo: string, umOrigen: string, umDestino: string): Promise<number | null> => {
+    if (umOrigen === umDestino || !umOrigen || !umDestino) return 1
+    const key = `${codigo}|${umOrigen}|${umDestino}`
+    const keyInv = `${codigo}|${umDestino}|${umOrigen}`
+    setConvLoading(prev => ({ ...prev, [key]: true }))
+    const { data } = await supabase.from('catalog_conversiones')
+      .select('factor').eq('material', codigo).eq('um_origen', umOrigen).eq('um_destino', umDestino).maybeSingle()
+    if (data?.factor) {
+      setConvCache(prev => ({ ...prev, [key]: data.factor }))
+      setConvLoading(prev => ({ ...prev, [key]: false }))
+      return data.factor
+    }
+    const { data: inv } = await supabase.from('catalog_conversiones')
+      .select('factor').eq('material', codigo).eq('um_origen', umDestino).eq('um_destino', umOrigen).maybeSingle()
+    if (inv?.factor) {
+      setConvCache(prev => ({ ...prev, [keyInv]: inv.factor }))
+      setConvLoading(prev => ({ ...prev, [key]: false }))
+      return 1 / inv.factor
+    }
+    setConvLoading(prev => ({ ...prev, [key]: false }))
+    return null
+  }
+
   const confirmarSalidaDetalle = async () => {
     const itemsValidos = activeItems.filter(i => parseFloat(salidaQtys[i.id] ?? '0') > 0)
     if (itemsValidos.length === 0) return toast.error('Ingresa al menos una cantidad')
