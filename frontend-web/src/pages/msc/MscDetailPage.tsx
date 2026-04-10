@@ -1210,7 +1210,7 @@ export default function MscDetailPage() {
                           return (
                             <tr key={item.id} className="border-b border-gray-100">
                               <td className="px-3 py-2 font-mono font-semibold text-gray-800">{item.codigo}</td>
-                              <td className="px-3 py-2 text-gray-600 max-w-32 truncate">
+                              <td className="px-3 py-2 text-gray-600 max-w-xs">
                                 {item.descripcion}
                                 {/* Preview desgaste inline */}
                                 {(() => {
