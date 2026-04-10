@@ -525,6 +525,17 @@ export default function MscDetailPage() {
     setSalidaStep(1)
     setSalidaCreada(null)
     setShowSalidaPanel(true)
+    // Cargar UMs base del catálogo
+    setSalidaUms({})
+    const _codigos = activeItems.map((i: any) => i.codigo).filter(Boolean)
+    if (_codigos.length > 0) {
+      supabase.from('catalog_materials').select('material, um').in('material', _codigos)
+        .then(({ data }) => {
+          const _map: Record<string, string> = {}
+          ;(data ?? []).forEach((r: any) => { if (r.um) _map[r.material] = r.um })
+          setUmBaseMap(_map)
+        })
+    }
   }
 
   const buscarConvFactor = async (codigo: string, umOrigen: string, umDestino: string): Promise<number | null> => {
