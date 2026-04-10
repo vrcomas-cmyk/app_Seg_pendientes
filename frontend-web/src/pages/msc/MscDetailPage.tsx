@@ -1241,7 +1241,13 @@ export default function MscDetailPage() {
                                     className="w-20 border border-teal-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-500 text-right"
                                     placeholder="0"
                                     value={salidaQtys[item.id] ?? ''}
-                                    onChange={e => setSalidaQtys(prev => ({ ...prev, [item.id]: e.target.value }))} />
+                                    onChange={e => {
+                                      setSalidaQtys(prev => ({ ...prev, [item.id]: e.target.value }))
+                                      const umSal = salidaUms[item.codigo] ?? item.um ?? ''
+                                      if (umSal && item.um && umSal !== item.um) {
+                                        void buscarConvFactor(item.codigo, item.um, umSal)
+                                      }
+                                    }} />
                                 ) : <span className="text-gray-300 text-xs">Sin stock</span>}
                               </td>
                               <td className="px-3 py-2">
