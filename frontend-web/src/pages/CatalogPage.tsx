@@ -4,22 +4,31 @@ import { useRole } from '../hooks/useRole'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
+// 8 campos = 8 columnas visibles en tabla (deben coincidir exactamente)
 const CAMPOS_EDITABLES = [
-  { key: 'descripcion',     label: 'Descripción',       type: 'text'   },
-  { key: 'um',              label: 'UM',                type: 'text'   },
-  { key: 'tipo_material',   label: 'Tipo',              type: 'text'   },
-  { key: 'sector',          label: 'Sector',            type: 'text'   },
-  { key: 'descr_sector',    label: 'Descr. Sector',     type: 'text'   },
-  { key: 'grupo_articulos', label: 'Grupo Art.',        type: 'text'   },
-  { key: 'costo',           label: 'Costo',             type: 'number' },
-  { key: 'lista_02',        label: 'Lista 02',          type: 'number' },
-  { key: 'lista_06',        label: 'Lista 06',          type: 'number' },
-  { key: 'condicion',       label: 'Condición',         type: 'text'   },
+  { key: 'descripcion',   label: 'Descripción', type: 'text'   },
+  { key: 'um',            label: 'UM',          type: 'text'   },
+  { key: 'tipo_material', label: 'Tipo',        type: 'text'   },
+  { key: 'descr_sector',  label: 'Sector',      type: 'text'   },
+  { key: 'costo',         label: 'Costo',       type: 'number' },
+  { key: 'lista_02',      label: 'Lista 02',    type: 'number' },
+  { key: 'lista_06',      label: 'Lista 06',    type: 'number' },
+  { key: 'condicion',     label: 'Condición',   type: 'text'   },
 ]
 
+// Modal nuevo material incluye campos extra no visibles inline
 const CAMPOS_NUEVO = [
-  { key: 'material',        label: 'Código Material *', type: 'text'   },
-  ...CAMPOS_EDITABLES,
+  { key: 'material',        label: 'Código Material *',   type: 'text'   },
+  { key: 'descripcion',     label: 'Descripción',         type: 'text'   },
+  { key: 'um',              label: 'UM',                  type: 'text'   },
+  { key: 'tipo_material',   label: 'Tipo',                type: 'text'   },
+  { key: 'sector',          label: 'Sector (código)',      type: 'text'   },
+  { key: 'descr_sector',    label: 'Sector (descripción)', type: 'text'   },
+  { key: 'grupo_articulos', label: 'Grupo de artículos',  type: 'text'   },
+  { key: 'costo',           label: 'Costo',               type: 'number' },
+  { key: 'lista_02',        label: 'Lista 02',            type: 'number' },
+  { key: 'lista_06',        label: 'Lista 06',            type: 'number' },
+  { key: 'condicion',       label: 'Condición',           type: 'text'   },
 ]
 
 export default function CatalogPage() {

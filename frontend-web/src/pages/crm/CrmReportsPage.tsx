@@ -390,21 +390,37 @@ export default function CrmReportsPage() {
       {showColFilters && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm font-semibold text-gray-700">Filtrar por columna</p>
+            <p className="text-sm font-semibold text-gray-700">
+              Filtrar por columna
+              {Object.values(colFilters).filter(Boolean).length > 0 && (
+                <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">
+                  {Object.values(colFilters).filter(Boolean).length} activo(s)
+                </span>
+              )}
+            </p>
             <button onClick={() => setColFilters({})}
-              className="text-xs text-red-500 hover:text-red-700">Limpiar filtros</button>
+              className="text-xs text-red-500 hover:text-red-700 font-medium">
+              Limpiar todos ×
+            </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(tab === 'suggestions' ? SUGG_COLS : CONS_COLS).slice(0, 12).map(col => (
-              <div key={col.key}>
-                <label className="text-xs text-gray-400 block mb-0.5">{col.label}</label>
-                <input
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400"
-                  placeholder={`Filtrar...`}
-                  value={colFilters[col.key] ?? ''}
-                  onChange={e => setColFilters(prev => ({ ...prev, [col.key]: e.target.value }))} />
-              </div>
-            ))}
+          <div className="overflow-y-auto" style={{ maxHeight: '260px' }}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+              {(tab === 'suggestions' ? SUGG_COLS : CONS_COLS).map(col => (
+                <div key={col.key}>
+                  <label className={`text-xs block mb-0.5 truncate ${colFilters[col.key] ? 'text-teal-600 font-semibold' : 'text-gray-400'}`}
+                    title={col.label}>
+                    {col.label}
+                  </label>
+                  <input
+                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none ${
+                      colFilters[col.key] ? 'border-teal-400 bg-teal-50' : 'border-gray-200 focus:border-teal-400'
+                    }`}
+                    placeholder="Filtrar..."
+                    value={colFilters[col.key] ?? ''}
+                    onChange={e => setColFilters(prev => ({ ...prev, [col.key]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
