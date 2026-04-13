@@ -58,6 +58,7 @@ export default function MscDetailPage() {
   const [convLoading, setConvLoading] = useState<Record<string, boolean>>({})
   const [convFactor, setConvFactor] = useState('')
   const [salidaUms, setSalidaUms] = useState<Record<string, string>>({})
+  const [umSuggestions, setUmSuggestions] = useState<Record<string, string[]>>({})
   const [salidaForm2, setSalidaForm2] = useState({
     receptor_nombre: '', receptor_tipo: 'cliente',
     fecha_entrega: new Date().toISOString().split('T')[0],
@@ -532,6 +533,22 @@ export default function MscDetailPage() {
           const _map: Record<string, string> = {}
           ;(data ?? []).forEach((r: any) => { if (r.um) _map[r.material] = r.um })
           setUmBaseMap(_map)
+          // Cargar sugerencias de UM desde catalog_conversiones
+          const codigos = [...new Set(items.map((i: any) => i.codigo))]
+          if (codigos.length > 0) {
+            const { data: convData } = await supabase
+              .from('catalog_conversiones')
+              .select('material, um_origen, um_destino')
+              .in('material', codigos)
+            const sugMap: Record<string, string[]> = {}
+            ;(convData ?? []).forEach((c: any) => {
+              if (!sugMap[c.material]) sugMap[c.material] = []
+              if (!sugMap[c.material].includes(c.um_origen)) sugMap[c.material].push(c.um_origen)
+              if (!sugMap[c.material].includes(c.um_destino)) sugMap[c.material].push(c.um_destino)
+            })
+            setUmSuggestions(sugMap)
+          }
+
           // Inicializar salidaUms con la UM base de cada item
           const _ums: Record<string, string> = {}
           activeItems.forEach((i: any) => { if (_map[i.codigo]) _ums[i.codigo] = _map[i.codigo] })
@@ -1307,17 +1324,25 @@ export default function MscDetailPage() {
                                 ) : <span className="text-gray-300 text-xs">Sin stock</span>}
                               </td>
                               <td className="px-3 py-2">
-                                <input type="text"
-                                  className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 uppercase"
-                                  value={salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? (item as any).um ?? ''}
-                                  onChange={e => {
-                                    const newUm = e.target.value.toUpperCase()
-                                    setSalidaUms(prev => ({ ...prev, [item.codigo]: newUm }))
-                                    const umB = umBaseMap[item.codigo] ?? (item as any).um ?? ''
-                                    if (newUm.length >= 2 && umB && newUm !== umB) {
-                                      void buscarConvFactor(item.codigo, umB, newUm)
-                                    }
-                                  }} />
+                                <>
+                                  <datalist id={`um-list-${item.codigo}`}>
+                                    {(umSuggestions[item.codigo] ?? []).map(u => (
+                                      <option key={u} value={u} />
+                                    ))}
+                                  </datalist>
+                                  <input type="text"
+                                    list={`um-list-${item.codigo}`}
+                                    className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 uppercase"
+                                    value={salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? (item as any).um ?? ''}
+                                    onChange={e => {
+                                      const newUm = e.target.value.toUpperCase()
+                                      setSalidaUms(prev => ({ ...prev, [item.codigo]: newUm }))
+                                      const umB = umBaseMap[item.codigo] ?? (item as any).um ?? ''
+                                      if (newUm.length >= 2 && umB && newUm !== umB) {
+                                        void buscarConvFactor(item.codigo, umB, newUm)
+                                      }
+                                    }} />
+                                </>
                               </td>
                             </tr>
                           )
@@ -1330,9 +1355,47 @@ export default function MscDetailPage() {
                       className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
                       Cancelar
                     </button>
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       const hasQty = activeItems.some(i => parseFloat(salidaQtys[i.id] ?? '0') > 0)
                       if (!hasQty) return toast.error('Ingresa al menos una cantidad')
+
+                      // ── Verificar conversiones antes de pasar al paso 2 ─────
+                      const itemsConQty = activeItems.filter(i => parseFloat(salidaQtys[i.id] ?? '0') > 0)
+                      for (const item of itemsConQty) {
+                        const umSal  = salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? (item as any).um ?? ''
+                        const umBase = umBaseMap[item.codigo] ?? (item as any).um ?? ''
+                        if (umSal && umBase && umSal !== umBase) {
+                          const key    = `${item.codigo}|${umBase}|${umSal}`
+                          const keyInv = `${item.codigo}|${umSal}|${umBase}`
+                          const cached = convCache[key] !== undefined ? convCache[key]
+                                       : convCache[keyInv] !== undefined ? 1 / convCache[keyInv]
+                                       : null
+                          const factorOk = cached !== null ? cached : await buscarConvFactor(item.codigo, umBase, umSal)
+                          if (!factorOk) {
+                            setConvModal({
+                              codigo: item.codigo,
+                              umSalida: umSal,
+                              umStock: umBase,
+                              onConfirm: async (f: number) => {
+                                await supabase.from('catalog_conversiones').upsert({
+                                  material: item.codigo, um_origen: umBase,
+                                  um_destino: umSal, factor: f,
+                                }, { onConflict: 'material,um_origen,um_destino' })
+                                setConvCache(prev => ({ ...prev, [key]: f }))
+                                setUmSuggestions(prev => ({
+                                  ...prev,
+                                  [item.codigo]: [...new Set([...(prev[item.codigo] ?? []), umSal, umBase])]
+                                }))
+                                setConvModal(null)
+                                setConvFactor('')
+                                setSalidaStep(2)
+                              },
+                            })
+                            return // espera al modal
+                          }
+                        }
+                      }
+                      // ────────────────────────────────────────────────────────
                       setSalidaStep(2)
                     }}
                       className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-teal-700">

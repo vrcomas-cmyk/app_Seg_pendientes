@@ -201,12 +201,27 @@ export default function CrmReportsPage() {
     setRows([])
     setPage(0)
     setSelected([])
-    buildQuery(0).then(({ data, count, error }) => {
+    buildQuery(0).then(async ({ data, count, error }) => {
       if (error) console.error(error)
-      setRows(data ?? [])
+      const initialRows = data ?? []
+      setRows(initialRows)
       setTotal(count ?? 0)
-      setHasMore((data?.length ?? 0) === PAGE_SIZE)
       setLoading(false)
+      setViewPage(0)
+      // Auto-cargar el resto en background
+      const totalCount = count ?? 0
+      if (initialRows.length < totalCount) {
+        let accumulated = [...initialRows]
+        let offset = PAGE_SIZE
+        while (offset < totalCount) {
+          const { data: more } = await buildQuery(offset)
+          if (!more || more.length === 0) break
+          accumulated = [...accumulated, ...more]
+          setRows([...accumulated])
+          offset += PAGE_SIZE
+        }
+      }
+      setHasMore(false)
     })
   }, [tab, fuente, centro, solicitante, soloDisponibles, debouncedSearch])
 
@@ -233,6 +248,8 @@ export default function CrmReportsPage() {
   const hasFilters = search || fuente || centro || solicitante || soloDisponibles
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
   const [showColFilters, setShowColFilters] = useState(false)
+  const [viewPageSize, setViewPageSize] = useState<number | 'all'>(500)
+  const [viewPage, setViewPage] = useState(0)
 
   const exportExcel = () => {
     const cols = tab === 'suggestions' ? SUGG_COLS : CONS_COLS
@@ -261,6 +278,11 @@ export default function CrmReportsPage() {
       return String(row[key] ?? '').toLowerCase().includes(val.toLowerCase())
     })
   })
+
+  const totalVisible = visibleRows.length
+  const vpSize = viewPageSize === 'all' ? totalVisible : viewPageSize
+  const totalViewPages = viewPageSize === 'all' ? 1 : Math.ceil(totalVisible / vpSize)
+  const pagedRows = visibleRows.slice(viewPage * vpSize, (viewPage + 1) * vpSize)
 
   const createOffersFromSelection = async () => {
     if (selected.length === 0) return
@@ -360,7 +382,9 @@ export default function CrmReportsPage() {
             <h1 className="text-xl font-bold text-gray-800">Reportes globales</h1>
           </div>
           <p className="text-sm text-gray-400">
-            {loading ? 'Cargando...' : `${visibleRows.length} de ${rows.length} (total ${total}) registros`}
+            {loading
+              ? `Cargando... (${rows.length} de ${total})`
+              : `${visibleRows.length} filtrados de ${rows.length} cargados (total ${total})`}
             {selected.length > 0 && ` · ${selected.length} seleccionados`}
           </p>
         </div>
@@ -507,7 +531,7 @@ export default function CrmReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(row => (
+                  {pagedRows.map(row => (
                     <tr key={row.id}
                       onClick={() => toggleRow(row.id)}
                       className={`border-b border-gray-100 cursor-pointer transition ${
@@ -531,28 +555,58 @@ export default function CrmReportsPage() {
               </table>
             </div>
 
-            {/* Footer con cargar más */}
-            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-              <p className="text-xs text-gray-400">
-                Mostrando {rows.length} de {total} registros
-                {hasFilters && ' (filtrados)'}
-              </p>
-              <div className="flex items-center gap-3">
-                {selected.length > 0 && (
-                  <button onClick={createOffersFromSelection} disabled={creatingOffer}
-                    className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
-                    {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length}`}
-                  </button>
-                )}
-                {hasMore && (
-                  <button onClick={loadMore} disabled={loadingMore}
-                    className="border border-gray-200 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50">
-                    {loadingMore ? 'Cargando...' : `Cargar ${PAGE_SIZE} más`}
-                  </button>
-                )}
-                {!hasMore && rows.length > 0 && (
-                  <span className="text-xs text-gray-300">Todos los registros cargados</span>
-                )}
+            {/* Footer con paginación */}
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-gray-500">
+                    {viewPageSize === 'all'
+                      ? `Mostrando todos (${visibleRows.length})`
+                      : `${viewPage * vpSize + 1}–${Math.min((viewPage + 1) * vpSize, totalVisible)} de ${totalVisible}`}
+                    {rows.length < total && (
+                      <span className="text-amber-500 ml-2">· cargando {rows.length}/{total}...</span>
+                    )}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-400">Ver:</span>
+                    {([500, 1000, 2000, 'all'] as (number | 'all')[]).map(v => (
+                      <button key={String(v)}
+                        onClick={() => { setViewPageSize(v); setViewPage(0) }}
+                        className={`px-2 py-1 text-xs rounded font-medium border transition ${
+                          viewPageSize === v
+                            ? 'bg-teal-600 text-white border-teal-600'
+                            : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}>
+                        {v === 'all' ? 'Todos' : v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selected.length > 0 && (
+                    <button onClick={createOffersFromSelection} disabled={creatingOffer}
+                      className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+                      {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length}`}
+                    </button>
+                  )}
+                  {totalViewPages > 1 && (
+                    <>
+                      <button onClick={() => setViewPage(p => Math.max(0, p - 1))}
+                        disabled={viewPage === 0}
+                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-white">
+                        ← Anterior
+                      </button>
+                      <span className="text-xs text-gray-500">
+                        {viewPage + 1} / {totalViewPages}
+                      </span>
+                      <button onClick={() => setViewPage(p => Math.min(totalViewPages - 1, p + 1))}
+                        disabled={viewPage >= totalViewPages - 1}
+                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-white">
+                        Siguiente →
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </>
