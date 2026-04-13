@@ -172,6 +172,22 @@ export default function MscDetailPage() {
       return rec >= item.cantidad_pedida
     }), [activeItems, cantRecibidaMap])
 
+  // Memoizar verificación de total entregado (entregado >= recibido para cada item)
+  const isTotalEntregado = useMemo(() =>
+    activeItems.length > 0 && activeItems.every(item => {
+      const rec = cantRecibidaMap.get(item.id) ?? 0
+      const ent = cantEntregadaMap.get(item.codigo) ?? 0
+      return rec > 0 && ent >= rec
+    }), [activeItems, cantRecibidaMap, cantEntregadaMap])
+
+  // Material disponible (recibido pero no entregado aún)
+  const hayStockPendienteEntrega = useMemo(() =>
+    activeItems.some(item => {
+      const rec = cantRecibidaMap.get(item.id) ?? 0
+      const ent = cantEntregadaMap.get(item.codigo) ?? 0
+      return rec - ent > 0
+    }), [activeItems, cantRecibidaMap, cantEntregadaMap])
+
   // Memoizar salidas sin evidencia
   const salidasSinEvidencia = useMemo(() =>
     salidas.filter(sal => {
@@ -181,8 +197,8 @@ export default function MscDetailPage() {
 
   // Memoizar verificación de completación
   const puedeCompletarse = useMemo(() =>
-    isTotalRecibido && salidasSinEvidencia.length === 0 && salidas.length > 0,
-    [isTotalRecibido, salidasSinEvidencia, salidas.length])
+    isTotalRecibido && isTotalEntregado && salidasSinEvidencia.length === 0 && salidas.length > 0,
+    [isTotalRecibido, isTotalEntregado, salidasSinEvidencia, salidas.length])
 
   const checkAutoClose = useCallback(async () => {
     if (!sol || sol.estatus !== 'en_proceso') return
@@ -841,10 +857,30 @@ export default function MscDetailPage() {
           {sol.asunto && <div className="col-span-2 sm:col-span-3"><p className="text-gray-400">Asunto / Referencia</p><p className="font-medium text-indigo-700">{sol.asunto}</p></div>}
         </div>
 
-        {sol.estatus === 'en_proceso' && isTotalRecibido && salidasSinEvidencia.length > 0 && (
+        {sol.estatus === 'en_proceso' && hayStockPendienteEntrega && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm text-blue-700 font-medium">
+              📦 Material recibido con stock disponible para entrega. Genera salidas hasta agotar el material recibido.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {activeItems.map(item => {
+                const rec = cantRecibidaMap.get(item.id) ?? 0
+                const ent = cantEntregadaMap.get(item.codigo) ?? 0
+                const pend = rec - ent
+                if (pend <= 0) return null
+                return (
+                  <span key={item.id} className="text-xs bg-blue-100 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 font-mono">
+                    {item.codigo}: {pend} {(item as any).um ?? ''} pendiente(s)
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {sol.estatus === 'en_proceso' && isTotalRecibido && !hayStockPendienteEntrega && salidasSinEvidencia.length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 mb-4">
             <p className="text-sm text-yellow-700 font-medium">
-              Material al 100% recibido. Faltan evidencias en {salidasSinEvidencia.length} salida(s) para cerrar.
+              ✅ Todo el material fue entregado. Faltan evidencias en {salidasSinEvidencia.length} salida(s) para cerrar.
             </p>
           </div>
         )}
