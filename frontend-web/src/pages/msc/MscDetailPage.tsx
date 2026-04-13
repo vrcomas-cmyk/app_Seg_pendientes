@@ -73,6 +73,12 @@ export default function MscDetailPage() {
   // Cancelacion
   const [cancelModal, setCancelModal] = useState<{ type: 'item' | 'all'; itemId?: string } | null>(null)
   const [cancelMotivo, setCancelMotivo] = useState('')
+  // Cancelar salida
+  const [cancelSalidaModal, setCancelSalidaModal] = useState<{ salidaId: string; receptor: string } | null>(null)
+  const [cancelSalidaMotivo, setCancelSalidaMotivo] = useState('')
+  const [cancelandoSalida, setCancelandoSalida] = useState(false)
+  // Preview evidencia
+  const [previewEv, setPreviewEv] = useState<{ url: string; nombre: string } | null>(null)
 
   // Anexo B modal
   const [showAnexoB, setShowAnexoB] = useState(false)
@@ -147,14 +153,16 @@ export default function MscDetailPage() {
   // Helper para obtener cantidad recibida (ahora usa el mapa memoizado)
   const cantRecibida = (itemId: string, codigo: string) => cantRecibidaMap.get(itemId) ?? 0
 
-  // Memoizar mapa de cantidades entregadas por código
+  // Memoizar mapa de cantidades entregadas por código (excluye salidas canceladas)
   const cantEntregadaMap = useMemo(() => {
     const map = new Map<string, number>()
     for (const item of items) {
-      const total = salidas.reduce((acc, sal) => {
-        const si = (sal.msc_salida_items ?? []).filter((s: any) => s.solicitud_id === id && s.codigo === item.codigo)
-        return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
-      }, 0)
+      const total = salidas
+        .filter(sal => (sal as any).estatus !== 'cancelada')
+        .reduce((acc, sal) => {
+          const si = (sal.msc_salida_items ?? []).filter((s: any) => s.solicitud_id === id && s.codigo === item.codigo)
+          return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
+        }, 0)
       map.set(item.codigo, total)
     }
     return map
@@ -188,9 +196,10 @@ export default function MscDetailPage() {
       return rec - ent > 0
     }), [activeItems, cantRecibidaMap, cantEntregadaMap])
 
-  // Memoizar salidas sin evidencia
+  // Memoizar salidas sin evidencia (solo salidas activas requieren evidencia)
   const salidasSinEvidencia = useMemo(() =>
     salidas.filter(sal => {
+      if ((sal as any).estatus === 'cancelada') return false
       const evSalida = evidencias.filter(e => e.salida_id === sal.id)
       return evSalida.length === 0
     }), [salidas, evidencias])
@@ -276,6 +285,25 @@ export default function MscDetailPage() {
       url: publicUrl, nombre: file.name, tipo, created_by: user?.id,
     })
     toast.success('Evidencia subida'); load()
+  }
+
+  // Cancelar una salida registrada
+  const cancelarSalida = async () => {
+    if (!cancelSalidaMotivo.trim()) return toast.error('El motivo es obligatorio')
+    if (!cancelSalidaModal) return
+    setCancelandoSalida(true)
+    const user = await getCachedUser()
+    await supabase.from('msc_salidas').update({
+      estatus: 'cancelada',
+      motivo_cancelacion: cancelSalidaMotivo,
+      cancelada_at: new Date().toISOString(),
+      cancelada_by: user?.id,
+    }).eq('id', cancelSalidaModal.salidaId)
+    toast.success('Salida cancelada — el material regresó al disponible')
+    setCancelSalidaModal(null)
+    setCancelSalidaMotivo('')
+    setCancelandoSalida(false)
+    load()
   }
 
   // Cancelar item(s)
@@ -1215,22 +1243,47 @@ export default function MscDetailPage() {
             const evSalida = evidencias.filter(e => e.salida_id === sal.id)
             const tieneEvidencia = evSalida.length > 0
             return (
-              <div key={sal.id} className="px-4 py-4 border-b border-gray-100 last:border-0">
+              <div key={sal.id} className={`px-4 py-4 border-b border-gray-100 last:border-0 ${(sal as any).estatus === 'cancelada' ? 'opacity-50 bg-gray-50' : ''}`}>
+                {/* Cancelada banner */}
+                {(sal as any).estatus === 'cancelada' && (
+                  <div className="flex items-center gap-2 mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <span className="text-xs font-bold text-red-600 uppercase tracking-wide">🚫 Salida cancelada</span>
+                    <span className="text-xs text-red-500">{(sal as any).motivo_cancelacion}</span>
+                    {(sal as any).cancelada_at && (
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {new Date((sal as any).cancelada_at).toLocaleString('es-MX')}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-800">{sal.receptor_nombre}</p>
-                      {tieneEvidencia
+                      <p className={`text-sm font-semibold ${(sal as any).estatus === 'cancelada' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                        {sal.receptor_nombre}
+                      </p>
+                      {(sal as any).estatus !== 'cancelada' && (tieneEvidencia
                         ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Evidencia OK</span>
-                        : <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Sin evidencia</span>}
+                        : <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Sin evidencia</span>)}
                     </div>
                     <p className="text-xs text-gray-400">{sal.receptor_tipo} · {sal.fecha_entrega}</p>
                   </div>
-                  <label className="cursor-pointer border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 flex items-center">
-                    {tieneEvidencia ? 'Agregar evidencia' : '+ Subir evidencia *'}
-                    <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) subirEvidencia(f, 'entrega', sal.id) }} />
-                  </label>
+                  <div className="flex gap-2">
+                    {(sal as any).estatus !== 'cancelada' && (
+                      <label className="cursor-pointer border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 flex items-center">
+                        {tieneEvidencia ? 'Agregar evidencia' : '+ Subir evidencia *'}
+                        <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) subirEvidencia(f, 'entrega', sal.id) }} />
+                      </label>
+                    )}
+                    {(sal as any).estatus !== 'cancelada' && !['completada','cancelada'].includes(sol.estatus) && (
+                      <button
+                        onClick={() => { setCancelSalidaModal({ salidaId: sal.id, receptor: sal.receptor_nombre }); setCancelSalidaMotivo('') }}
+                        className="border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-50">
+                        Cancelar salida
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {misSalItems.map((si: any) => (
@@ -1242,10 +1295,11 @@ export default function MscDetailPage() {
                 {evSalida.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {evSalida.map(ev => (
-                      <a key={ev.id} href={ev.url} target="_blank" rel="noreferrer"
-                        className="text-xs text-teal-600 hover:underline bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
-                        {ev.nombre}
-                      </a>
+                      <button key={ev.id}
+                        onClick={() => setPreviewEv({ url: ev.url, nombre: ev.nombre })}
+                        className="text-xs text-teal-600 hover:underline bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg flex items-center gap-1">
+                        👁 {ev.nombre}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -1579,6 +1633,77 @@ export default function MscDetailPage() {
                 className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600">
                 Confirmar cancelación
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal cancelar salida */}
+      {cancelSalidaModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md p-6">
+            <h2 className="text-base font-bold text-gray-800 mb-1">Cancelar salida</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Receptor: <strong>{cancelSalidaModal.receptor}</strong>. El material regresará al stock disponible.
+            </p>
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 block mb-1">Motivo de cancelación *</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-300 h-24 resize-none"
+                placeholder="Describe el motivo..."
+                value={cancelSalidaMotivo}
+                onChange={e => setCancelSalidaMotivo(e.target.value)}
+                autoFocus />
+            </div>
+            <div className="flex justify-between">
+              <button onClick={() => { setCancelSalidaModal(null); setCancelSalidaMotivo('') }}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                Volver
+              </button>
+              <button onClick={cancelarSalida} disabled={cancelandoSalida || !cancelSalidaMotivo.trim()}
+                className="bg-red-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 disabled:opacity-50">
+                {cancelandoSalida ? 'Cancelando...' : 'Confirmar cancelación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal preview evidencia */}
+      {previewEv && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 z-[110] flex flex-col items-center justify-center p-4"
+          onClick={() => setPreviewEv(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 flex-shrink-0">
+              <p className="text-sm font-semibold text-gray-800 truncate max-w-md">{previewEv.nombre}</p>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={previewEv.url} target="_blank" rel="noreferrer"
+                  className="text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium">
+                  Abrir en nueva pestaña ↗
+                </a>
+                <button onClick={() => setPreviewEv(null)}
+                  className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-1">×</button>
+              </div>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-100 rounded-b-2xl min-h-64">
+              {/\.(jpg|jpeg|png|gif|webp)$/i.test(previewEv.nombre) ? (
+                <img src={previewEv.url} alt={previewEv.nombre}
+                  className="max-w-full max-h-[75vh] object-contain rounded-b-2xl" />
+              ) : /\.pdf$/i.test(previewEv.nombre) ? (
+                <iframe src={previewEv.url} title={previewEv.nombre}
+                  className="w-full rounded-b-2xl" style={{ height: '75vh' }} />
+              ) : (
+                <div className="text-center p-8">
+                  <p className="text-gray-500 text-sm mb-3">Vista previa no disponible para este tipo de archivo.</p>
+                  <a href={previewEv.url} target="_blank" rel="noreferrer"
+                    className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+                    Descargar archivo
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
