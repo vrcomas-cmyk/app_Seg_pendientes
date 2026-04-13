@@ -529,25 +529,23 @@ export default function MscDetailPage() {
     const _codigos = activeItems.map((i: any) => i.codigo).filter(Boolean)
     if (_codigos.length > 0) {
       supabase.from('catalog_materials').select('material, um').in('material', _codigos)
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           const _map: Record<string, string> = {}
           ;(data ?? []).forEach((r: any) => { if (r.um) _map[r.material] = r.um })
           setUmBaseMap(_map)
+
           // Cargar sugerencias de UM desde catalog_conversiones
-          const codigos = [...new Set(items.map((i: any) => i.codigo))]
-          if (codigos.length > 0) {
-            const { data: convData } = await supabase
-              .from('catalog_conversiones')
-              .select('material, um_origen, um_destino')
-              .in('material', codigos)
-            const sugMap: Record<string, string[]> = {}
-            ;(convData ?? []).forEach((c: any) => {
-              if (!sugMap[c.material]) sugMap[c.material] = []
-              if (!sugMap[c.material].includes(c.um_origen)) sugMap[c.material].push(c.um_origen)
-              if (!sugMap[c.material].includes(c.um_destino)) sugMap[c.material].push(c.um_destino)
-            })
-            setUmSuggestions(sugMap)
-          }
+          const { data: convData } = await supabase
+            .from('catalog_conversiones')
+            .select('material, um_origen, um_destino')
+            .in('material', _codigos)
+          const sugMap: Record<string, string[]> = {}
+          ;(convData ?? []).forEach((c: any) => {
+            if (!sugMap[c.material]) sugMap[c.material] = []
+            if (!sugMap[c.material].includes(c.um_origen)) sugMap[c.material].push(c.um_origen)
+            if (!sugMap[c.material].includes(c.um_destino)) sugMap[c.material].push(c.um_destino)
+          })
+          setUmSuggestions(sugMap)
 
           // Inicializar salidaUms con la UM base de cada item
           const _ums: Record<string, string> = {}
