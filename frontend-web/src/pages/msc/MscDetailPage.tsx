@@ -574,6 +574,43 @@ export default function MscDetailPage() {
     if (itemsValidos.length === 0) return toast.error('Ingresa al menos una cantidad')
     if (!salidaForm2.receptor_nombre.trim()) return toast.error('El nombre del receptor es obligatorio')
     setSavingSalida(true)
+
+    // ── Verificar conversiones faltantes antes de guardar ────────────────
+    for (const item of itemsValidos) {
+      const umSal  = salidaUms[item.codigo] ?? umBaseMap[item.codigo] ?? (item as any).um ?? ''
+      const umBase = umBaseMap[item.codigo] ?? (item as any).um ?? ''
+      if (umSal && umBase && umSal !== umBase) {
+        const key    = `${item.codigo}|${umBase}|${umSal}`
+        const keyInv = `${item.codigo}|${umSal}|${umBase}`
+        const cached = convCache[key] !== undefined ? convCache[key]
+                     : convCache[keyInv] !== undefined ? 1 / convCache[keyInv]
+                     : null
+        const factorOk = cached !== null ? cached : await buscarConvFactor(item.codigo, umBase, umSal)
+        if (!factorOk) {
+          setConvModal({
+            codigo:   item.codigo,
+            umSalida: umSal,
+            umStock:  umBase,
+            onConfirm: async (f: number) => {
+              await supabase.from('catalog_conversiones').upsert({
+                material:   item.codigo,
+                um_origen:  umBase,
+                um_destino: umSal,
+                factor:     f,
+              }, { onConflict: 'material,um_origen,um_destino' })
+              setConvCache(prev => ({ ...prev, [key]: f }))
+              setConvModal(null)
+              setConvFactor('')
+              confirmarSalidaDetalle()
+            },
+          })
+          setSavingSalida(false)
+          return
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     const user = await getCachedUser()
 
     const { data: sal } = await supabase.from('msc_salidas').insert({

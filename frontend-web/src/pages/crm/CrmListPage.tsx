@@ -1,20 +1,32 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+
+const PAGE_SIZE = 50
 
 export default function CrmListPage() {
   const [followups, setFollowups] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'seguimientos' | 'clientes'>('seguimientos')
-  const [clients, setClients] = useState<any[]>([])
-  const [search, setSearch] = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [view, setView]           = useState<'seguimientos' | 'clientes'>('seguimientos')
+
+  // ── clientes ───────────────────────────────────────────────────────────
+  const [clients, setClients]         = useState<any[]>([])
+  const [search, setSearch]           = useState('')
+  const [filterGpoVdor, setFilterGpoVdor] = useState('')
+  const [filterRamo, setFilterRamo]   = useState('')
+  const [page, setPage]               = useState(0)
+  const [totalCount, setTotalCount]   = useState(0)
+
+  // ── seguimientos ───────────────────────────────────────────────────────
   const [filterEstatus, setFilterEstatus] = useState('pendiente')
+
+  // ──────────────────────────────────────────────────────────────────────
 
   const loadFollowups = async () => {
     setLoading(true)
     let q = supabase
       .from('crm_followups')
-      .select('*, crm_clients(id, solicitante, ramo, centro), crm_recipients(destinatario), crm_contacts(nombre, puesto)')
+      .select('*, crm_clients(id, solicitante, ramo, centro, gpo_vendedor), crm_recipients(destinatario), crm_contacts(nombre, puesto)')
       .order('fecha_seguimiento', { ascending: true, nullsFirst: false })
     if (filterEstatus) q = q.eq('estatus', filterEstatus)
     const { data } = await q
@@ -22,21 +34,44 @@ export default function CrmListPage() {
     setLoading(false)
   }
 
-  const loadClients = async () => {
+  const loadClients = async (currentPage = page) => {
     setLoading(true)
-    let q = supabase.from('crm_clients')
-      .select('*, crm_recipients(count), crm_followups(count), crm_offers(id, estatus)')
+    let q = supabase
+      .from('crm_clients')
+      .select('*, crm_recipients(count), crm_followups(count), crm_offers(id, estatus)', { count: 'exact' })
       .order('solicitante')
-    if (search) q = q.or(`solicitante.ilike.%${search}%,razon_social.ilike.%${search}%,rfc.ilike.%${search}%`)
-    const { data } = await q
+    if (search.trim())
+      q = q.or(`solicitante.ilike.%${search.trim()}%,razon_social.ilike.%${search.trim()}%,rfc.ilike.%${search.trim()}%`)
+    if (filterGpoVdor.trim())
+      q = q.ilike('gpo_vendedor', `%${filterGpoVdor.trim()}%`)
+    if (filterRamo.trim())
+      q = q.ilike('ramo', `%${filterRamo.trim()}%`)
+    q = q.range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1)
+    const { data, count } = await q
     setClients(data ?? [])
+    setTotalCount(count ?? 0)
     setLoading(false)
   }
 
+  // seguimientos reacciona a su propio filtro
   useEffect(() => {
     if (view === 'seguimientos') loadFollowups()
-    else loadClients()
-  }, [view, filterEstatus, search])
+  }, [view, filterEstatus])
+
+  // clientes: reset page cuando cambian filtros
+  useEffect(() => {
+    if (view === 'clientes') {
+      setPage(0)
+      loadClients(0)
+    }
+  }, [view, search, filterGpoVdor, filterRamo])
+
+  // clientes: cambio de página
+  useEffect(() => {
+    if (view === 'clientes') loadClients(page)
+  }, [page])
+
+  // ──────────────────────────────────────────────────────────────────────
 
   const TIPO_LABEL: Record<string, string> = {
     llamada: '📞 Llamada', visita: '🤝 Visita', correo: '📧 Correo',
@@ -52,7 +87,7 @@ export default function CrmListPage() {
     cancelado:           'bg-gray-100 text-gray-500',
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today     = new Date().toISOString().split('T')[0]
   const overdue   = followups.filter(f => f.fecha_seguimiento && f.fecha_seguimiento < today)
   const todayList = followups.filter(f => f.fecha_seguimiento === today)
   const upcoming  = followups.filter(f => f.fecha_seguimiento && f.fecha_seguimiento > today)
@@ -64,6 +99,11 @@ export default function CrmListPage() {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <span className="text-sm font-semibold text-gray-800">{f.crm_clients?.solicitante}</span>
+          {f.crm_clients?.gpo_vendedor && (
+            <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded-full">
+              Gpo. {f.crm_clients.gpo_vendedor}
+            </span>
+          )}
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[f.estatus]}`}>
             {f.estatus.replace('_', ' ')}
           </span>
@@ -97,6 +137,10 @@ export default function CrmListPage() {
       <span className="text-xs font-semibold bg-white bg-opacity-60 px-2 py-0.5 rounded-full">{count}</span>
     </div>
   )
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const from = totalCount === 0 ? 0 : page * PAGE_SIZE + 1
+  const to   = Math.min((page + 1) * PAGE_SIZE, totalCount)
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -150,7 +194,7 @@ export default function CrmListPage() {
         </button>
       </div>
 
-      {/* Vista: Seguimientos */}
+      {/* ── Vista: Seguimientos ─────────────────────────────────────────── */}
       {view === 'seguimientos' && (
         <>
           <div className="flex gap-2 mb-4 flex-wrap">
@@ -174,7 +218,6 @@ export default function CrmListPage() {
           {!loading && followups.length === 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <p className="text-gray-400 text-sm mb-4">No hay seguimientos con este estatus.</p>
-              <p className="text-xs text-gray-300">Crea un cliente y agrega un seguimiento para verlo aquí.</p>
             </div>
           )}
           {!loading && followups.length > 0 && (
@@ -200,18 +243,34 @@ export default function CrmListPage() {
         </>
       )}
 
-      {/* Vista: Clientes */}
+      {/* ── Vista: Clientes ─────────────────────────────────────────────── */}
       {view === 'clientes' && (
         <>
-          <input
-            className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm mb-4 outline-none focus:border-teal-400"
-            placeholder="Buscar por nombre, razón social o RFC..."
-            value={search} onChange={e => setSearch(e.target.value)} />
+          {/* Filtros */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <input
+              className="border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:border-teal-400 flex-1 min-w-48"
+              placeholder="Buscar por nombre, razón social o RFC..."
+              value={search} onChange={e => setSearch(e.target.value)} />
+            <input
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 w-32"
+              placeholder="Gpo. Vdor."
+              value={filterGpoVdor} onChange={e => setFilterGpoVdor(e.target.value)} />
+            <input
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 w-32"
+              placeholder="Ramo"
+              value={filterRamo} onChange={e => setFilterRamo(e.target.value)} />
+          </div>
+
+          <p className="text-xs text-gray-400 mb-2">
+            {from}–{to} de {totalCount} clientes
+          </p>
+
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {loading && <p className="text-sm text-gray-400 p-6">Cargando...</p>}
             {!loading && clients.length === 0 && (
               <div className="p-12 text-center">
-                <p className="text-gray-400 text-sm mb-4">No hay clientes registrados.</p>
+                <p className="text-gray-400 text-sm mb-4">No hay clientes con estos filtros.</p>
                 <Link to="/admin"
                   className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
                   Ir a Admin para importar
@@ -227,12 +286,17 @@ export default function CrmListPage() {
                   className="flex items-center justify-between px-5 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50">
                   <Link to={`/crm/${c.id}`} className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800">{c.solicitante}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {c.razon_social && <span className="mr-3">{c.razon_social}</span>}
-                      {c.rfc && <span className="mr-3">RFC: {c.rfc}</span>}
-                      {c.estado && <span className="mr-3">{c.estado}</span>}
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-400 mt-0.5">
+                      {c.razon_social && <span>{c.razon_social}</span>}
+                      {c.rfc && <span>RFC: {c.rfc}</span>}
+                      {c.estado && <span>{c.estado}</span>}
                       {c.ramo && <span>{c.ramo}</span>}
-                    </p>
+                      {c.gpo_vendedor && (
+                        <span className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded-full font-medium">
+                          Gpo. {c.gpo_vendedor}
+                        </span>
+                      )}
+                    </div>
                   </Link>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                     <div className="text-center">
@@ -244,15 +308,9 @@ export default function CrmListPage() {
                       <p className="text-sm font-semibold text-gray-700">{c.crm_followups?.[0]?.count ?? 0}</p>
                     </div>
                     {activeOffers > 0 && (
-                      <Link
-                        to={`/crm/${c.id}`}
-                        state={{ tab: 'ofertas' }}
-                        onClick={e => e.stopPropagation()}
-                        className="flex items-center gap-1 bg-teal-50 border border-teal-200 text-teal-700 px-2.5 py-1 rounded-lg hover:bg-teal-100 transition"
-                        title="Ver ofertas activas">
-                        <span className="text-xs font-bold">{activeOffers}</span>
-                        <span className="text-xs">oferta{activeOffers > 1 ? 's' : ''}</span>
-                      </Link>
+                      <span className="flex items-center gap-1 bg-teal-50 border border-teal-200 text-teal-700 px-2.5 py-1 rounded-lg text-xs font-bold">
+                        {activeOffers} oferta{activeOffers > 1 ? 's' : ''}
+                      </span>
                     )}
                     <Link to={`/crm/${c.id}`} className="text-gray-300 text-lg">›</Link>
                   </div>
@@ -260,6 +318,45 @@ export default function CrmListPage() {
               )
             })}
           </div>
+
+          {/* Paginación */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 bg-white border border-gray-200 rounded-xl px-5 py-3">
+              <p className="text-sm text-gray-500">
+                {from}–{to} de <strong>{totalCount}</strong> clientes
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+                  ← Anterior
+                </button>
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                  const p = totalPages <= 7 ? i
+                    : page < 4 ? i
+                    : page > totalPages - 5 ? totalPages - 7 + i
+                    : page - 3 + i
+                  return (
+                    <button key={p} onClick={() => setPage(p)}
+                      className={`w-8 h-8 text-xs rounded-lg font-medium ${
+                        p === page
+                          ? 'bg-teal-600 text-white'
+                          : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}>
+                      {p + 1}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+                  Siguiente →
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
