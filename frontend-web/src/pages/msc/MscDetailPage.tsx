@@ -81,6 +81,18 @@ export default function MscDetailPage() {
   const [previewEv, setPreviewEv] = useState<{ url: string; nombre: string } | null>(null)
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  // Ajuste de recepción
+  const [ajusteModal, setAjusteModal] = useState<{ item: any; rec: number } | null>(null)
+  const [ajusteMotivo, setAjusteMotivo] = useState('')
+  const [savingAjuste, setSavingAjuste] = useState(false)
+  // Cancelar pendiente
+  const [cancelPendModal, setCancelPendModal] = useState<{ item: any; pend: number } | null>(null)
+  const [cancelPendMotivo, setCancelPendMotivo] = useState('')
+  const [savingCancelPend, setSavingCancelPend] = useState(false)
+  // Devolución
+  const [devModal, setDevModal] = useState<{ salida: any; items: any[] } | null>(null)
+  const [devForm, setDevForm] = useState<{ itemId: string; cantidad: string; motivo: string }[]>([])
+  const [savingDev, setSavingDev] = useState(false)
 
   // Anexo B modal
   const [showAnexoB, setShowAnexoB] = useState(false)
@@ -188,10 +200,19 @@ export default function MscDetailPage() {
   const activeItems = useMemo(() => items.filter(i => i.estatus_linea !== 'cancelado'), [items])
 
   // Memoizar verificación de total recibido
+  // Cantidad objetivo respetando ajustes y cancelaciones de pendiente
+  const cantObjetivo = (item: any): number => {
+    if (item.estatus_recepcion === 'ajustado' || item.estatus_recepcion === 'cancelado_pendiente') {
+      return cantRecibidaMap.get(item.id) ?? 0
+    }
+    if (item.cantidad_ajustada != null) return item.cantidad_ajustada
+    return item.cantidad_pedida
+  }
+
   const isTotalRecibido = useMemo(() =>
     activeItems.length > 0 && activeItems.every(item => {
       const rec = cantRecibidaMap.get(item.id) ?? 0
-      return rec >= item.cantidad_pedida
+      return rec >= cantObjetivo(item)
     }), [activeItems, cantRecibidaMap])
 
   // Memoizar verificación de total entregado (entregado >= recibido para cada item)
