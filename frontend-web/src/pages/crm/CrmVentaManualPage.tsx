@@ -64,32 +64,57 @@ function ClienteInput({ value, onChange, onSelect }: {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
 
-  const search = async (q: string) => {
+
+
+  const [searched, setSearched] = useState(false)
+
+  const searchWithFlag = async (q: string) => {
     onChange(q)
-    if (q.length < 2) { setSugs([]); setOpen(false); return }
+    if (q.length < 2) { setSugs([]); setOpen(false); setSearched(false); return }
     const { data } = await supabase.from('crm_clients')
       .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
       .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%,no_cliente.ilike.%${q}%`)
       .limit(8)
-    setSugs(data ?? []); setOpen(true)
+    setSugs(data ?? []); setSearched(true); setOpen(true)
   }
 
   return (
     <div className="relative">
-      <input value={value} onChange={e => search(e.target.value)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      <input value={value} onChange={e => searchWithFlag(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-        placeholder="Buscar por nombre o número de cliente" />
-      {open && sugs.length > 0 && (
-        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-48 overflow-y-auto mt-0.5">
-          {sugs.map(c => (
-            <button key={c.id} type="button"
-              onMouseDown={() => { onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false) }}
-              className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex gap-2">
-              {c.no_cliente && <span className="font-mono text-gray-500">{c.no_cliente}</span>}
-              <span className="font-semibold text-gray-800">{c.razon_social ?? c.solicitante}</span>
-            </button>
-          ))}
+        placeholder="Buscar por nombre, razón social o No. cliente" />
+      {open && (sugs.length > 0 || searched) && (
+        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-64 overflow-y-auto mt-0.5">
+          {sugs.length > 0
+            ? sugs.map(c => (
+                <button key={c.id} type="button"
+                  onMouseDown={() => { onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSearched(false) }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                  {c.no_cliente && <span className="font-mono text-gray-400 flex-shrink-0">{c.no_cliente}</span>}
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 truncate">{c.razon_social ?? c.solicitante}</p>
+                    {c.razon_social && c.solicitante !== c.razon_social && (
+                      <p className="text-gray-400 text-xs truncate">{c.solicitante}</p>
+                    )}
+                  </div>
+                </button>
+              ))
+            : (
+              <div className="px-3 py-3 text-xs text-gray-500">
+                <p className="mb-2">No se encontró "<strong>{value}</strong>" en el catálogo de clientes.</p>
+                <a
+                  href="/crm/new"
+                  target="_blank"
+                  rel="noreferrer"
+                  onMouseDown={e => e.preventDefault()}
+                  className="inline-flex items-center gap-1 bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700">
+                  + Registrar nuevo cliente
+                </a>
+                <p className="text-gray-400 mt-2 text-xs">Abre en nueva pestaña. Después vuelve aquí y búscalo de nuevo.</p>
+              </div>
+            )
+          }
         </div>
       )}
     </div>
@@ -143,25 +168,44 @@ export default function CrmVentaManualPage() {
       return -1
     }
 
+    // Limpia valores monetarios: "$1,234.56" → "1234.56"
+    const cleanMoney = (v: string) => v.replace(/[$,\s]/g, '')
+
+    // Convierte dd/mm/yyyy o dd-mm-yyyy → yyyy-mm-dd para Supabase
+    const toIsoDate = (v: string): string => {
+      if (!v) return ''
+      // ya está en formato ISO
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+      // dd/mm/yyyy o dd-mm-yyyy
+      const m = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+      if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+      // mm/dd/yyyy (fallback)
+      const m2 = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/)
+      if (m2) return `20${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`
+      return v
+    }
+
     const parsed = lines.slice(1).map(line => {
       const cols = line.split('\t')
       const get = (names: string[]) => {
         const i = idx(names); return i >= 0 ? cols[i]?.trim() ?? '' : ''
       }
-      const hasEsp = !!(get(['lote']) || get(['fecha de caducidad', 'caducidad']))
+      const rawPrecio = get(['precio_unitario_ultima', 'precio unitario ultima', 'precio unitario', 'precio oferta', 'precio_oferta', 'lista 06', 'lista 02', 'precio'])
+      const rawCad   = get(['fecha de caducidad', 'fecha caducidad', 'fecha_caducidad', 'caducidad', 'cad', 'fec. cad', 'fec.cad'])
+      const hasEsp   = !!(get(['lote']) || rawCad)
       return {
         material:           get(['material sugerido', 'material solicitado', 'material base', 'material']),
         descripcion:        get(['descripcion sugerida', 'descripcion solicitada', 'descripcion']),
         cantidad_pedida:    get(['cantidad pedido', 'ultima_compra_cliente', 'cantidad pedida']),
         cantidad_pendiente: get(['cantidad pendiente', 'ultima_facturacion_destinatario']),
         cantidad_aceptada:  get(['cantidad a ofertar', 'cantidad ofertar']),
-        precio:             get(['precio_unitario_ultima', 'precio unitario ultima', 'precio unitario', 'precio oferta', 'precio_oferta', 'lista 06', 'lista 02', 'precio']),
+        precio:             cleanMoney(rawPrecio),
         um:                 get(['um']),
         consumo_promedio:   get(['consumo promedio']),
         fuente:             get(['fuente']),
         disponible:         get(['disponible']),
         lote:               get(['lote']),
-        caducidad:          get(['fecha de caducidad', 'fecha caducidad', 'fecha_caducidad', 'caducidad', 'cad', 'fec. cad', 'fec.cad']),
+        caducidad:          toIsoDate(rawCad),
         centro:             get(['centro sugerido', 'centro']),
         almacen:            get(['almacen sugerido', 'almacen']),
         condicion_especial: hasEsp,
