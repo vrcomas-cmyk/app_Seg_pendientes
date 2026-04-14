@@ -71,11 +71,22 @@ function ClienteInput({ value, onChange, onSelect }: {
   const searchWithFlag = async (q: string) => {
     onChange(q)
     if (q.length < 2) { setSugs([]); setOpen(false); setSearched(false); return }
-    const { data } = await supabase.from('crm_clients')
+    // Search by name/razon_social first — no_cliente can be null and pollutes OR results
+    const { data: byName } = await supabase.from('crm_clients')
       .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
-      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%,no_cliente.ilike.%${q}%`)
+      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
       .limit(8)
-    setSugs(data ?? []); setSearched(true); setOpen(true)
+    let results = byName ?? []
+    // If looks like a client number (digits), also search by no_cliente
+    if (results.length < 8 && /\d/.test(q)) {
+      const { data: byNum } = await supabase.from('crm_clients')
+        .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
+        .ilike('no_cliente', `%${q}%`)
+        .limit(8 - results.length)
+      const existing = new Set(results.map((r: any) => r.id))
+      results = [...results, ...(byNum ?? []).filter((r: any) => !existing.has(r.id))]
+    }
+    setSugs(results); setSearched(true); setOpen(true)
   }
 
   return (

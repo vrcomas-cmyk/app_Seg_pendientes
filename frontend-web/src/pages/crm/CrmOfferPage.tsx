@@ -216,7 +216,7 @@ export default function CrmOfferPage() {
         const pending = (allItems ?? []).filter(i => !i.aceptado && i.estatus !== 'rechazado')
         if (pending.length === 0) {
           // Todos procesados — cerrar oferta automáticamente
-          await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
+          await supabase.from('crm_offers').update({ estatus: 'cerrada', etapa: 'cerrada' }).eq('id', savedOfferId)
           toast.success('✅ Venta confirmada — oferta cerrada automáticamente')
           nav('/crm/ventas', { replace: true })
         } else {
@@ -331,7 +331,7 @@ export default function CrmOfferPage() {
             <>
               <button onClick={async () => {
                 if (!window.confirm('¿Cerrar esta oferta?')) return
-                await supabase.from('crm_offers').update({ estatus: 'cerrada' }).eq('id', savedOfferId)
+                await supabase.from('crm_offers').update({ estatus: 'cerrada', etapa: 'cerrada' }).eq('id', savedOfferId)
                 toast.success('Oferta cerrada')
                 nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50">
@@ -339,7 +339,7 @@ export default function CrmOfferPage() {
               </button>
               <button onClick={async () => {
                 if (!window.confirm('¿Cancelar esta oferta?')) return
-                await supabase.from('crm_offers').update({ estatus: 'cancelado' }).eq('id', savedOfferId)
+                await supabase.from('crm_offers').update({ estatus: 'cancelado', etapa: 'cancelado' }).eq('id', savedOfferId)
                 toast.success('Oferta cancelada')
                 nav(`/crm/${clientId}`, { replace: true })
               }} className="border border-red-300 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">

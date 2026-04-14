@@ -210,7 +210,11 @@ export default function CrmPipelinePage() {
     setSavingClose(true)
     const user_id = (await supabase.auth.getSession()).data.session?.user.id
     const nuevoEstatus = closeModal.accion === 'cancelar' ? 'cancelado' : 'cerrada'
-    await supabase.from('crm_offers').update({ estatus: nuevoEstatus, notas: closeMotivo || null }).eq('id', closeModal.venta.id)
+    await supabase.from('crm_offers').update({
+      estatus: nuevoEstatus,
+      etapa:   nuevoEstatus,   // pipeline filtra por etapa
+      notas:   closeMotivo || null,
+    }).eq('id', closeModal.venta.id)
     // Also mark items
     await supabase.from('crm_offer_items')
       .update({ estatus: nuevoEstatus === 'cancelado' ? 'cancelado' : 'facturado' })
@@ -371,12 +375,20 @@ export default function CrmPipelinePage() {
                         ${total.toLocaleString('es-MX', { minimumFractionDigits: 0 })}
                       </span>
                     )}
-                    <div className="flex gap-1.5">
-                      {!['facturado','cancelado'].includes(v.etapa) && (
-                        <button onClick={() => avanzarEtapa(v)}
-                          className="text-xs bg-teal-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-teal-700 font-medium">
-                          {esOferta ? 'Convertir a Venta →' : 'Avanzar →'}
-                        </button>
+                    <div className="flex gap-1.5 flex-wrap justify-end">
+                      {!['facturado','cancelado','cerrada'].includes(v.etapa) && (
+                        <>
+                          <button onClick={() => avanzarEtapa(v)}
+                            className="text-xs bg-teal-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-teal-700 font-medium">
+                            {esOferta ? 'Convertir a Venta →' : 'Avanzar →'}
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setCloseModal({ venta: v, accion: 'cancelar' }); setCloseMotivo('') }}
+                            className="text-xs border border-red-200 text-red-500 px-2.5 py-1.5 rounded-lg hover:bg-red-50 font-medium"
+                            title="Cancelar oferta">
+                            ✗
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
