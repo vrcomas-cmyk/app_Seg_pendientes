@@ -491,7 +491,7 @@ export default function CrmCedisSeguimientoPage() {
                 </div>
                 <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div className="h-full bg-teal-500 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (cantRecibida(historialRow.id) / (historialRow.cantidad_pedida ?? historialRow.cantidad || 1)) * 100)}%` }} />
+                    style={{ width: `${Math.min(100, (cantRecibida(historialRow.id) / ((historialRow.cantidad_pedida ?? historialRow.cantidad) || 1)) * 100)}%` }} />
                 </div>
               </div>
             )}
@@ -580,7 +580,7 @@ export default function CrmCedisSeguimientoPage() {
                   </div>
                   <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-full bg-teal-500 rounded-full"
-                      style={{ width: `${Math.min(100,(cantRecibida(llegadaModal.id)/(llegadaModal.cantidad_pedida ?? llegadaModal.cantidad || 1))*100)}%` }} />
+                      style={{ width: `${Math.min(100,(cantRecibida(llegadaModal.id)/((llegadaModal.cantidad_pedida ?? llegadaModal.cantidad) || 1))*100)}%` }} />
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
                     Pendiente: <strong>{Math.max(0,(llegadaModal.cantidad_pedida ?? llegadaModal.cantidad ?? 0) - cantRecibida(llegadaModal.id))} {llegadaModal.um}</strong>
