@@ -59,7 +59,7 @@ function MaterialInput({ value, onChange, onSelect }: {
 
 function ClienteInput({ value, onChange, onSelect }: {
   value: string; onChange: (v: string) => void
-  onSelect: (id: string, nombre: string, razon: string, noCliente: string) => void
+  onSelect: (id: string, nombre: string, razon: string, noCliente: string, cliente: any) => void
 }) {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
@@ -68,8 +68,8 @@ function ClienteInput({ value, onChange, onSelect }: {
     onChange(q)
     if (q.length < 2) { setSugs([]); setOpen(false); return }
     const { data } = await supabase.from('crm_clients')
-      .select('id, solicitante, razon_social, no_cliente')
-      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
+      .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
+      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%,no_cliente.ilike.%${q}%`)
       .limit(8)
     setSugs(data ?? []); setOpen(true)
   }
@@ -84,7 +84,7 @@ function ClienteInput({ value, onChange, onSelect }: {
         <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-48 overflow-y-auto mt-0.5">
           {sugs.map(c => (
             <button key={c.id} type="button"
-              onMouseDown={() => { onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? ''); setOpen(false) }}
+              onMouseDown={() => { onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false) }}
               className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex gap-2">
               {c.no_cliente && <span className="font-mono text-gray-500">{c.no_cliente}</span>}
               <span className="font-semibold text-gray-800">{c.razon_social ?? c.solicitante}</span>
@@ -118,6 +118,8 @@ export default function CrmVentaManualPage() {
   const [saving, setSaving] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [pastePreview, setPastePreview] = useState<any[]>([])
+  const [tipoNegocio, setTipoNegocio] = useState<'venta' | 'donativo'>('venta')
+  const [destinatarios, setDestinatarios] = useState<any[]>([])
 
   const setF = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }))
   const setRow = (i: number, field: string, val: any) =>
@@ -153,13 +155,13 @@ export default function CrmVentaManualPage() {
         cantidad_pedida:    get(['cantidad pedido', 'ultima_compra_cliente', 'cantidad pedida']),
         cantidad_pendiente: get(['cantidad pendiente', 'ultima_facturacion_destinatario']),
         cantidad_aceptada:  get(['cantidad a ofertar', 'cantidad ofertar']),
-        precio:             get(['precio_unitario_ultima', 'precio']),
+        precio:             get(['precio_unitario_ultima', 'precio unitario ultima', 'precio unitario', 'precio oferta', 'precio_oferta', 'lista 06', 'lista 02', 'precio']),
         um:                 get(['um']),
         consumo_promedio:   get(['consumo promedio']),
         fuente:             get(['fuente']),
         disponible:         get(['disponible']),
         lote:               get(['lote']),
-        caducidad:          get(['fecha de caducidad', 'caducidad']),
+        caducidad:          get(['fecha de caducidad', 'fecha caducidad', 'fecha_caducidad', 'caducidad', 'cad', 'fec. cad', 'fec.cad']),
         centro:             get(['centro sugerido', 'centro']),
         almacen:            get(['almacen sugerido', 'almacen']),
         condicion_especial: hasEsp,
@@ -219,14 +221,17 @@ export default function CrmVentaManualPage() {
       const user = await getCachedUser()
       const { data: offer, error } = await supabase.from('crm_offers').insert({
         client_id:      clienteId,
-        tipo:           'venta_directa',
-        etapa:          'venta',
+        tipo:           'manual',
+        tipo_negocio:   tipoNegocio,
+        etapa:          tipoNegocio === 'donativo' ? 'donativo' : 'venta',
         estatus:        'borrador',
         notas:          form.notas || null,
         fecha_venta:    form.fecha,
         folio_pedido:   form.folio_pedido || null,
         gpo_cliente:    form.gpo_cliente || null,
         gpo_vendedor:   form.gpo_vendedor || null,
+        solicitante:    form.solicitante || null,
+        destinatario:   form.destinatario || null,
         centro_pedido:  form.centro_pedido || null,
         almacen_pedido: form.almacen_pedido || null,
         created_by:     user?.id,
@@ -256,8 +261,41 @@ export default function CrmVentaManualPage() {
           numero_pedido:      form.folio_pedido || null,
         }))
       )
-      toast.success('Venta creada')
-      nav('/crm/pipeline')
+      if (tipoNegocio === 'donativo') {
+        // Crear solicitud MSC vinculada al donativo
+        const { data: mscSol } = await supabase.from('msc_solicitudes').insert({
+          tipo: 'solicitud',
+          asunto: `Donativo — ${clienteInfo.razon} (${form.fecha})`,
+          destinatario_tipo: 'cliente',
+          destinatario_nombre: form.destinatario || clienteInfo.razon,
+          client_id: clienteId,
+          solicitante: form.solicitante || null,
+          crm_offer_id: offer.id,
+          created_by: user?.id,
+          estatus: 'borrador',
+        }).select().single()
+
+        if (mscSol) {
+          await supabase.from('msc_items').insert(
+            validRows.map(r => ({
+              solicitud_id: mscSol.id,
+              codigo: r.material,
+              descripcion: r.descripcion || null,
+              cantidad_pedida: parseFloat(r.cantidad_aceptada || r.cantidad_pedida) || 0,
+              precio_unitario: parseFloat(r.precio) || null,
+              um: r.um || null,
+            }))
+          )
+          toast.success('Donativo creado — solicitud MSC enviada para aprobación')
+          nav(`/msc/${mscSol.id}`)
+        } else {
+          toast.success('Donativo guardado en CRM')
+          nav('/crm/pipeline')
+        }
+      } else {
+        toast.success('Venta creada')
+        nav('/crm/pipeline')
+      }
     } catch (e: any) {
       toast.error(`Error: ${e.message}`)
     }
@@ -327,6 +365,36 @@ export default function CrmVentaManualPage() {
       {/* Tab: Formulario */}
       {tab === 'formulario' && (
         <div className="space-y-5">
+          {/* Tipo de negocio */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wide">Tipo de registro</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTipoNegocio('venta')}
+                className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition flex items-center justify-center gap-2 ${
+                  tipoNegocio === 'venta'
+                    ? 'bg-teal-600 text-white border-teal-600'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-teal-300'
+                }`}>
+                💰 Venta
+              </button>
+              <button
+                onClick={() => setTipoNegocio('donativo')}
+                className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition flex items-center justify-center gap-2 ${
+                  tipoNegocio === 'donativo'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-purple-300'
+                }`}>
+                🎁 Donativo
+              </button>
+            </div>
+            {tipoNegocio === 'donativo' && (
+              <div className="mt-3 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 text-xs text-purple-700">
+                El donativo no se factura. Al guardar se crea una solicitud MSC para aprobación y seguimiento.
+              </div>
+            )}
+          </div>
+
           {/* Datos generales */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Datos generales</h3>
@@ -334,10 +402,25 @@ export default function CrmVentaManualPage() {
               <div className="col-span-2 sm:col-span-3">
                 <label className="text-xs text-gray-500 block mb-1">Cliente * (No. cliente o Razón Social)</label>
                 <ClienteInput value={clienteInput} onChange={setClienteInput}
-                  onSelect={(id, nombre, razon, noCliente) => {
+                  onSelect={async (id, nombre, razon, noCliente, cliente) => {
                     setClienteId(id)
                     setClienteInfo({ razon: razon || nombre, noCliente })
                     setClienteInput(razon || nombre)
+                    // Autofill form fields from client data
+                    setForm(prev => ({
+                      ...prev,
+                      gpo_cliente:   cliente?.gpo_cliente   ?? prev.gpo_cliente,
+                      gpo_vendedor:  cliente?.gpo_vendedor  ?? prev.gpo_vendedor,
+                      solicitante:   cliente?.no_cliente    ?? cliente?.solicitante ?? prev.solicitante,
+                      centro_pedido: cliente?.centro        ?? prev.centro_pedido,
+                    }))
+                    // Load destinatarios for this client
+                    const { data: recs } = await supabase.from('crm_recipients')
+                      .select('id, destinatario').eq('client_id', id).order('destinatario')
+                    setDestinatarios(recs ?? [])
+                    if (recs && recs.length === 1) {
+                      setForm(prev => ({ ...prev, destinatario: recs[0].destinatario }))
+                    }
                   }} />
                 {clienteId && (
                   <p className="text-xs text-teal-600 mt-1">
@@ -351,8 +434,7 @@ export default function CrmVentaManualPage() {
                 { label: 'Fecha', key: 'fecha', placeholder: '', type: 'date' },
                 { label: 'Gpo. Cliente', key: 'gpo_cliente', placeholder: '' },
                 { label: 'Gpo. Vendedor', key: 'gpo_vendedor', placeholder: '' },
-                { label: 'Solicitante', key: 'solicitante', placeholder: '' },
-                { label: 'Destinatario', key: 'destinatario', placeholder: '' },
+                { label: 'Solicitante', key: 'solicitante', placeholder: 'No. cliente' },
                 { label: 'Centro pedido', key: 'centro_pedido', placeholder: '' },
                 { label: 'Almacén', key: 'almacen_pedido', placeholder: '' },
               ].map(f => (
@@ -365,6 +447,25 @@ export default function CrmVentaManualPage() {
                     onChange={e => setF(f.key, e.target.value)} />
                 </div>
               ))}
+              {/* Destinatario — select si hay opciones, input libre si no */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Destinatario</label>
+                {destinatarios.length > 0 ? (
+                  <select
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 bg-white"
+                    value={form.destinatario}
+                    onChange={e => setF('destinatario', e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {destinatarios.map(d => (
+                      <option key={d.id} value={d.destinatario}>{d.destinatario}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                    placeholder="Destinatario"
+                    value={form.destinatario} onChange={e => setF('destinatario', e.target.value)} />
+                )}
+              </div>
               <div className="col-span-2 sm:col-span-3">
                 <label className="text-xs text-gray-500 block mb-1">Notas / Observaciones</label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
@@ -468,7 +569,7 @@ export default function CrmVentaManualPage() {
             </button>
             <button onClick={guardar} disabled={saving}
               className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50">
-              {saving ? 'Guardando...' : 'Crear venta →'}
+              {saving ? 'Guardando...' : tipoNegocio === 'donativo' ? 'Crear donativo →' : 'Crear venta →'}
             </button>
           </div>
         </div>
