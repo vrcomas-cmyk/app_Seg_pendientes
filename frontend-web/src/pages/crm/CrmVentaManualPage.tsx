@@ -153,6 +153,23 @@ export default function CrmVentaManualPage() {
   const removeRow = (i: number) => setRows(prev => prev.filter((_, idx) => idx !== i))
 
   // Parsear pegado de Excel con normalización de columnas
+  // Helpers de parsing — también usados en guardar()
+  const cleanMoney = (v: string) => v.replace(/[$,\s]/g, '')
+
+  const toIsoDate = (v: string): string => {
+    if (!v) return ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+    // dd/mm/yyyy o dd-mm-yyyy
+    const m = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+    // dd/mm/yy
+    const m2 = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/)
+    if (m2) return `20${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`
+    return v
+  }
+
+  const todayISO = new Date().toISOString().split('T')[0]
+
   const parsePaste = (text: string) => {
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (lines.length < 2) return
@@ -166,23 +183,6 @@ export default function CrmVentaManualPage() {
         if (i >= 0) return i
       }
       return -1
-    }
-
-    // Limpia valores monetarios: "$1,234.56" → "1234.56"
-    const cleanMoney = (v: string) => v.replace(/[$,\s]/g, '')
-
-    // Convierte dd/mm/yyyy o dd-mm-yyyy → yyyy-mm-dd para Supabase
-    const toIsoDate = (v: string): string => {
-      if (!v) return ''
-      // ya está en formato ISO
-      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
-      // dd/mm/yyyy o dd-mm-yyyy
-      const m = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
-      if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
-      // mm/dd/yyyy (fallback)
-      const m2 = v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/)
-      if (m2) return `20${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`
-      return v
     }
 
     const parsed = lines.slice(1).map(line => {
@@ -249,11 +249,30 @@ export default function CrmVentaManualPage() {
     }
   }
 
-  const aplicarPaste = () => {
+  const aplicarPaste = async () => {
     if (pastePreview.length === 0) return
-    setRows(pastePreview)
+    // Enrich: fetch UM and descripcion from catalog for rows missing them
+    const codigos = pastePreview.map(r => r.material).filter(Boolean)
+    let catMap: Record<string, { um: string; descripcion: string }> = {}
+    if (codigos.length > 0) {
+      const { data: cats } = await supabase
+        .from('catalog_materials')
+        .select('material, um, descripcion')
+        .in('material', codigos)
+      ;(cats ?? []).forEach((cat: any) => {
+        catMap[cat.material] = { um: cat.um ?? '', descripcion: cat.descripcion ?? '' }
+      })
+    }
+    const enriched = pastePreview.map(r => ({
+      ...r,
+      um:          r.um || catMap[r.material]?.um || '',
+      descripcion: r.descripcion || catMap[r.material]?.descripcion || '',
+      // Default caducidad to today if empty but condicion_especial is true
+      caducidad:   r.caducidad || (r.condicion_especial ? todayISO : ''),
+    }))
+    setRows(enriched)
     setTab('formulario')
-    toast.success(`${pastePreview.length} materiales cargados`)
+    toast.success(`${enriched.length} materiales cargados`)
   }
 
   const guardar = async () => {
@@ -296,7 +315,7 @@ export default function CrmVentaManualPage() {
           fuente:             r.fuente || null,
           disponible:         parseFloat(r.disponible) || null,
           lote:               r.lote || null,
-          caducidad:          r.caducidad || null,
+          caducidad:          toIsoDate(r.caducidad) || null,
           condicion_especial: r.condicion_especial,
           centro:             r.centro || null,
           almacen:            r.almacen || null,
@@ -326,7 +345,7 @@ export default function CrmVentaManualPage() {
               codigo: r.material,
               descripcion: r.descripcion || null,
               cantidad_pedida: parseFloat(r.cantidad_aceptada || r.cantidad_pedida) || 0,
-              precio_unitario: parseFloat(r.precio) || null,
+              precio_unitario: parseFloat(cleanMoney(r.precio)) || null,
               um: r.um || null,
             }))
           )
