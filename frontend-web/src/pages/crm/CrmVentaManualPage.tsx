@@ -81,7 +81,7 @@ function ClienteInput({ value, onChange, onSelect }: {
   return (
     <div className="relative">
       <input value={value} onChange={e => searchWithFlag(e.target.value)}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        onBlur={() => setTimeout(() => setOpen(false), 300)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
         placeholder="Buscar por nombre, razón social o No. cliente" />
       {open && (sugs.length > 0 || searched) && (
@@ -89,7 +89,7 @@ function ClienteInput({ value, onChange, onSelect }: {
           {sugs.length > 0
             ? sugs.map(c => (
                 <button key={c.id} type="button"
-                  onMouseDown={() => { onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSearched(false) }}
+                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSearched(false) }}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
                   {c.no_cliente && <span className="font-mono text-gray-400 flex-shrink-0">{c.no_cliente}</span>}
                   <div className="min-w-0">
@@ -200,7 +200,7 @@ export default function CrmVentaManualPage() {
         cantidad_pendiente: get(['cantidad pendiente', 'ultima_facturacion_destinatario']),
         cantidad_aceptada:  get(['cantidad a ofertar', 'cantidad ofertar']),
         precio:             cleanMoney(rawPrecio),
-        um:                 get(['um']),
+        um:                 '', // always fetched from catalog in aplicarPaste
         consumo_promedio:   get(['consumo promedio']),
         fuente:             get(['fuente']),
         disponible:         get(['disponible']),
@@ -228,7 +228,7 @@ export default function CrmVentaManualPage() {
         centro_pedido:  gk(['centro pedido']),
         almacen_pedido: gk(['almacen']),
         folio_pedido:   gk(['pedido']),
-        fecha:          gk(['fecha']) || prev.fecha,
+        fecha:          prev.fecha, // always keep today — never overwrite from Excel
       }))
       if (razonSocial) {
         setClienteInput(razonSocial)
