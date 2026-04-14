@@ -79,6 +79,8 @@ export default function MscDetailPage() {
   const [cancelandoSalida, setCancelandoSalida] = useState(false)
   // Preview evidencia
   const [previewEv, setPreviewEv] = useState<{ url: string; nombre: string } | null>(null)
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   // Anexo B modal
   const [showAnexoB, setShowAnexoB] = useState(false)
@@ -87,6 +89,9 @@ export default function MscDetailPage() {
     ejecutivo: '', zona: '', direccion_ventas: '',
     observaciones: '',
   })
+
+  const [cedisReqs, setCedisReqs] = useState<any[]>([])
+  const [cedisRecs, setCedisRecs] = useState<any[]>([])
 
   const load = useCallback(async () => {
     const [s, it, rec, sal, ev] = await Promise.all([
@@ -104,6 +109,13 @@ export default function MscDetailPage() {
     )
     setSalidas(salFiltradas)
     setEvidencias(ev.data ?? [])
+    // CEDIS vinculados a esta solicitud MSC
+    const [{ data: creqs }, { data: crecs }] = await Promise.all([
+      supabase.from('crm_cedis_requests').select('*').eq('msc_solicitud_id', id).order('created_at', { ascending: false }),
+      supabase.from('crm_cedis_recepciones').select('*'),
+    ])
+    setCedisReqs(creqs ?? [])
+    setCedisRecs(crecs ?? [])
     if (s.data) {
       setAprobForm({ aprobado_por: s.data.aprobado_por ?? '', notas_aprobacion: s.data.notas_aprobacion ?? '' })
       setFolioForm({
@@ -304,6 +316,31 @@ export default function MscDetailPage() {
     setCancelSalidaMotivo('')
     setCancelandoSalida(false)
     load()
+  }
+
+  // Abrir preview — descarga como blob para evitar bloqueo de CORS en iframe
+  const openPreview = async (ev: { url: string; nombre: string }) => {
+    setPreviewEv(ev)
+    setPreviewBlobUrl(null)
+    if (/\.pdf$/i.test(ev.nombre)) {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch(ev.url)
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        setPreviewBlobUrl(url)
+      } catch {
+        // fallback: usar URL directa
+        setPreviewBlobUrl(ev.url)
+      }
+      setPreviewLoading(false)
+    }
+  }
+
+  const closePreview = () => {
+    if (previewBlobUrl && previewBlobUrl.startsWith('blob:')) URL.revokeObjectURL(previewBlobUrl)
+    setPreviewEv(null)
+    setPreviewBlobUrl(null)
   }
 
   // Cancelar item(s)
@@ -1232,6 +1269,74 @@ export default function MscDetailPage() {
         }
       </div>
 
+      {/* CEDIS vinculados */}
+      {cedisReqs.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">Solicitudes CEDIS vinculadas</h2>
+            <a href="/cedis" className="text-xs text-teal-600 hover:underline">Ver todas →</a>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {['Código','Descripción','Pedido','Recibido','UM','Estatus','F. Esperada','Comentarios'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cedisReqs.map(cr => {
+                  const recs    = cedisRecs.filter(r => r.request_id === cr.id)
+                  const recibido = recs.reduce((s, r) => s + (r.cantidad_recibida ?? 0), 0)
+                  const pedido   = cr.cantidad_pedida ?? cr.cantidad ?? 0
+                  const ETAPAS_MAP: Record<string,{label:string;bg:string;color:string}> = {
+                    pendiente_solicitar: { label:'Pendiente solicitar', bg:'#F3F4F6', color:'#374151' },
+                    solicitado:          { label:'Solicitado',          bg:'#EFF6FF', color:'#1D4ED8' },
+                    en_transito:         { label:'En curso',            bg:'#FEF3C7', color:'#92400E' },
+                    recibido:            { label:'Llegada',             bg:'#D1FAE5', color:'#065F46' },
+                    cancelado:           { label:'Cancelado',           bg:'#FEE2E2', color:'#991B1B' },
+                  }
+                  const etapa = ETAPAS_MAP[cr.estatus] ?? ETAPAS_MAP['pendiente_solicitar']
+                  return (
+                    <tr key={cr.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <td className="px-3 py-2 font-mono font-semibold text-gray-800">{cr.codigo}</td>
+                      <td className="px-3 py-2 text-gray-600 max-w-xs truncate">{cr.descripcion}</td>
+                      <td className="px-3 py-2 text-right font-medium">{pedido}</td>
+                      <td className="px-3 py-2 text-right">
+                        {pedido > 0 ? (
+                          <span className={recibido >= pedido ? 'text-green-600 font-semibold' : recibido > 0 ? 'text-amber-600 font-semibold' : 'text-gray-400'}>
+                            {recibido}/{pedido}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">{cr.um}</td>
+                      <td className="px-3 py-2">
+                        <select value={cr.estatus}
+                          onChange={async e => {
+                            await supabase.from('crm_cedis_requests').update({ estatus: e.target.value }).eq('id', cr.id)
+                            setCedisReqs(prev => prev.map(r => r.id === cr.id ? { ...r, estatus: e.target.value } : r))
+                          }}
+                          style={{ background: etapa.bg, color: etapa.color }}
+                          className="border border-gray-200 rounded px-2 py-0.5 text-xs outline-none font-medium w-36">
+                          {Object.entries(ETAPAS_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
+                        {cr.fecha_esperada
+                          ? (() => { const m = cr.fecha_esperada.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : cr.fecha_esperada })()
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">{cr.comentarios ?? '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Salidas */}
       {salidas.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
@@ -1296,7 +1401,7 @@ export default function MscDetailPage() {
                   <div className="flex flex-wrap gap-2">
                     {evSalida.map(ev => (
                       <button key={ev.id}
-                        onClick={() => setPreviewEv({ url: ev.url, nombre: ev.nombre })}
+                        onClick={() => openPreview({ url: ev.url, nombre: ev.nombre })}
                         className="text-xs text-teal-600 hover:underline bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg flex items-center gap-1">
                         👁 {ev.nombre}
                       </button>
@@ -1672,7 +1777,7 @@ export default function MscDetailPage() {
       {/* Modal preview evidencia */}
       {previewEv && (
         <div className="fixed inset-0 bg-black bg-opacity-80 z-[110] flex flex-col items-center justify-center p-4"
-          onClick={() => setPreviewEv(null)}>
+          onClick={closePreview}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}>
             {/* Header */}
@@ -1683,7 +1788,7 @@ export default function MscDetailPage() {
                   className="text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium">
                   Abrir en nueva pestaña ↗
                 </a>
-                <button onClick={() => setPreviewEv(null)}
+                <button onClick={closePreview}
                   className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-1">×</button>
               </div>
             </div>
@@ -1693,8 +1798,20 @@ export default function MscDetailPage() {
                 <img src={previewEv.url} alt={previewEv.nombre}
                   className="max-w-full max-h-[75vh] object-contain rounded-b-2xl" />
               ) : /\.pdf$/i.test(previewEv.nombre) ? (
-                <iframe src={previewEv.url} title={previewEv.nombre}
-                  className="w-full rounded-b-2xl" style={{ height: '75vh' }} />
+                previewLoading ? (
+                  <div className="text-gray-400 text-sm p-8">Cargando PDF...</div>
+                ) : previewBlobUrl ? (
+                  <iframe src={previewBlobUrl} title={previewEv.nombre}
+                    className="w-full rounded-b-2xl" style={{ height: '75vh' }} />
+                ) : (
+                  <div className="text-center p-8">
+                    <p className="text-gray-500 text-sm mb-3">No se pudo cargar el PDF inline.</p>
+                    <a href={previewEv.url} target="_blank" rel="noreferrer"
+                      className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+                      Abrir PDF
+                    </a>
+                  </div>
+                )
               ) : (
                 <div className="text-center p-8">
                   <p className="text-gray-500 text-sm mb-3">Vista previa no disponible para este tipo de archivo.</p>

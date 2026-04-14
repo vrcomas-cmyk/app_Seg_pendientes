@@ -70,11 +70,12 @@ export default function Layout() {
   )
 
   const navLinks = [
-    { to: '/tasks',   label: 'Pendientes', module: 'pendientes', always: true },
+    { to: '/tasks',        label: 'Pendientes', module: 'pendientes', always: true },
     { to: '/crm/pipeline', label: 'CRM',        module: 'crm' },
-    { to: '/msc',     label: 'MSC',        module: 'msc' },
-    { to: '/catalog', label: 'Catalogo',   module: 'catalogo' },
-    { to: '/admin',   label: 'Admin',      module: 'admin' },
+    { to: '/msc',          label: 'MSC',        module: 'msc' },
+    { to: '/cedis',        label: 'CEDIS',      module: 'cedis' },
+    { to: '/catalog',      label: 'Catálogo',   module: 'catalogo' },
+    { to: '/admin',        label: 'Admin',      module: 'admin' },
   ].filter(l => l.always || hasModule(l.module))
 
   return (

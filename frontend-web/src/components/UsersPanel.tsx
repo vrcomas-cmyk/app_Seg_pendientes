@@ -6,7 +6,8 @@ const ALL_MODULES = [
   { key: 'pendientes',      label: 'Pendientes' },
   { key: 'msc',             label: 'MSC' },
   { key: 'crm',             label: 'CRM' },
-  { key: 'catalogo',        label: 'Catalogo' },
+  { key: 'cedis',           label: 'CEDIS' },
+  { key: 'catalogo',        label: 'Catálogo' },
   { key: 'admin',           label: 'Admin' },
 ]
 
@@ -21,7 +22,7 @@ const DEFAULT_MODULES: Record<string, string[]> = {
   user:             ['pendientes'],
   educador_clinico: ['pendientes', 'msc'],
   gerente:          ['pendientes', 'msc'],
-  admin:            ['pendientes', 'msc', 'crm', 'catalogo', 'admin'],
+  admin:            ['pendientes', 'msc', 'crm', 'cedis', 'catalogo', 'admin'],
 }
 
 export default function UsersPanel() {
