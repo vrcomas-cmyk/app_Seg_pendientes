@@ -173,9 +173,11 @@ export default function MscDetailPage() {
         .filter(sal => (sal as any).estatus !== 'cancelada')
         .reduce((acc, sal) => {
           const si = (sal.msc_salida_items ?? []).filter((s: any) => s.solicitud_id === id && s.codigo === item.codigo)
-          return acc + si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
+          const qty = si.reduce((a: number, s: any) => a + (s.cantidad_entregada ?? 0), 0)
+          // Devoluciones (tipo='devolucion') restan del total entregado
+          return (sal as any).tipo === 'devolucion' ? acc - qty : acc + qty
         }, 0)
-      map.set(item.codigo, total)
+      map.set(item.codigo, Math.max(0, total))
     }
     return map
   }, [items, salidas, id])
@@ -341,6 +343,86 @@ export default function MscDetailPage() {
     if (previewBlobUrl && previewBlobUrl.startsWith('blob:')) URL.revokeObjectURL(previewBlobUrl)
     setPreviewEv(null)
     setPreviewBlobUrl(null)
+  }
+
+  // ── Ajuste de cantidad recibida (cierre formal con menos de lo pedido) ──────
+  const confirmarAjuste = async () => {
+    if (!ajusteModal) return
+    setSavingAjuste(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('msc_items').update({
+      cantidad_ajustada:  ajusteModal.rec,
+      estatus_recepcion:  'ajustado',
+      motivo_cancelacion: ajusteMotivo || `Ajuste: recibido ${ajusteModal.rec} de ${ajusteModal.item.cantidad_pedida}`,
+    }).eq('id', ajusteModal.item.id)
+    toast.success(`Material ajustado — recibido ${ajusteModal.rec} de ${ajusteModal.item.cantidad_pedida}`)
+    setAjusteModal(null); setAjusteMotivo('')
+    setSavingAjuste(false); load()
+  }
+
+  // ── Cancelar unidades pendientes (las que no llegaron) ───────────────────
+  const confirmarCancelPend = async () => {
+    if (!cancelPendModal) return
+    setSavingCancelPend(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('msc_items').update({
+      estatus_recepcion:  'cancelado_pendiente',
+      motivo_cancelacion: cancelPendMotivo || `Cancelado pendiente: ${cancelPendModal.pend} unidades no recibidas`,
+    }).eq('id', cancelPendModal.item.id)
+    toast.success(`${cancelPendModal.pend} unidades pendientes canceladas`)
+    setCancelPendModal(null); setCancelPendMotivo('')
+    setSavingCancelPend(false); load()
+  }
+
+  // ── Devolución de material ────────────────────────────────────────────────
+  const abrirDevolucion = (sal: any) => {
+    const misSalItems = (sal.msc_salida_items ?? []).filter((si: any) => si.solicitud_id === id)
+    setDevModal({ salida: sal, items: misSalItems })
+    setDevForm(misSalItems.map((si: any) => ({
+      itemId: si.id, cantidad: '', motivo: ''
+    })))
+  }
+
+  const confirmarDevolucion = async () => {
+    if (!devModal) return
+    const validos = devForm.filter(d => parseFloat(d.cantidad) > 0)
+    if (validos.length === 0) return toast.error('Ingresa al menos una cantidad a devolver')
+    setSavingDev(true)
+    const { data: { session } } = await supabase.auth.getSession()
+
+    // Crear salida de tipo devolución
+    const { data: devSal } = await supabase.from('msc_salidas').insert({
+      receptor_nombre:    'Devolución',
+      receptor_tipo:      'usuario',
+      fecha_entrega:      new Date().toISOString().split('T')[0],
+      tipo:               'devolucion',
+      devolucion_salida_id: devModal.salida.id,
+      notas:              validos.map(d => d.motivo).filter(Boolean).join(' | ') || null,
+      created_by:         session?.user.id,
+      estatus:            'activa',
+    }).select().single()
+
+    if (!devSal) { toast.error('Error al crear devolución'); setSavingDev(false); return }
+
+    // Items devueltos (cantidades negativas implícitas — se restan en cantEntregadaMap)
+    const itemsSalida = devModal.items
+    await supabase.from('msc_salida_items').insert(
+      validos.map(d => {
+        const si = itemsSalida.find((s: any) => s.id === d.itemId)
+        return {
+          salida_id:          devSal.id,
+          solicitud_id:       id,
+          item_id:            si?.item_id ?? null,
+          codigo:             si?.codigo ?? '',
+          descripcion:        si?.descripcion ?? null,
+          cantidad_entregada: parseFloat(d.cantidad),
+        }
+      })
+    )
+
+    toast.success('Devolución registrada — el material regresó al inventario')
+    setDevModal(null); setDevForm([])
+    setSavingDev(false); load()
   }
 
   // Cancelar item(s)
@@ -1003,10 +1085,17 @@ export default function MscDetailPage() {
                       <span className={`font-semibold ${disp > 0 ? 'text-green-600' : 'text-gray-400'}`}>{disp}</span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {!isCancelled && pend > 0
-                        ? <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">{pend} pend.</span>
-                        : !isCancelled ? <span className="text-green-500 font-semibold">Completo</span>
-                        : null}
+                      {!isCancelled && (() => {
+                        const objetivo = cantObjetivo(item)
+                        const pendObj  = objetivo - rec
+                        if (item.estatus_recepcion === 'ajustado')
+                          return <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Ajustado</span>
+                        if (item.estatus_recepcion === 'cancelado_pendiente')
+                          return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">Pend. cancelado</span>
+                        if (pendObj > 0)
+                          return <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">{pendObj} pend.</span>
+                        return <span className="text-green-500 font-semibold">✓ Completo</span>
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500">
                       {item.precio_unitario ? `$${Number(item.precio_unitario).toLocaleString('es-MX')}` : '-'}
@@ -1017,23 +1106,51 @@ export default function MscDetailPage() {
                     <td className="px-3 py-2">
                       {isCancelled
                         ? <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full text-xs font-medium">Cancelado</span>
+                        : item.estatus_recepcion === 'ajustado'
+                          ? <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs font-medium">Ajustado</span>
+                        : item.estatus_recepcion === 'cancelado_pendiente'
+                          ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-medium">Pendiente cancelado</span>
                         : <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-medium">Activo</span>
                       }
-                      {isCancelled && item.motivo_cancelacion && (
-                        <p className="text-xs text-gray-400 mt-0.5 italic">{item.motivo_cancelacion}</p>
+                      {(isCancelled || item.estatus_recepcion === 'ajustado' || item.estatus_recepcion === 'cancelado_pendiente')
+                        && item.motivo_cancelacion && (
+                        <p className="text-xs text-gray-400 mt-0.5 italic truncate max-w-32">{item.motivo_cancelacion}</p>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 whitespace-nowrap">
                       {isCancelled ? (
                         <button onClick={() => reactivarItem(item.id)}
-                          className="text-xs text-teal-600 hover:underline font-medium whitespace-nowrap">
+                          className="text-xs text-teal-600 hover:underline font-medium">
                           Reactivar
                         </button>
                       ) : !['completada'].includes(sol.estatus) && (
-                        <button onClick={() => setCancelModal({ type: 'item', itemId: item.id })}
-                          className="text-xs text-red-400 hover:text-red-600 font-medium whitespace-nowrap">
-                          Cancelar
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          {/* Ajustar cantidad si recibió menos de lo pedido */}
+                          {rec > 0 && rec < item.cantidad_pedida
+                            && item.estatus_recepcion !== 'ajustado'
+                            && item.estatus_recepcion !== 'cancelado_pendiente' && (
+                            <button
+                              onClick={() => { setAjusteModal({ item, rec }); setAjusteMotivo('') }}
+                              className="text-xs text-amber-600 hover:text-amber-800 font-medium border border-amber-200 px-2 py-0.5 rounded-lg hover:bg-amber-50 whitespace-nowrap">
+                              ✏️ Ajustar
+                            </button>
+                          )}
+                          {/* Cancelar unidades pendientes */}
+                          {item.cantidad_pedida > rec
+                            && item.estatus_recepcion !== 'ajustado'
+                            && item.estatus_recepcion !== 'cancelado_pendiente' && (
+                            <button
+                              onClick={() => { setCancelPendModal({ item, pend: item.cantidad_pedida - rec }); setCancelPendMotivo('') }}
+                              className="text-xs text-orange-500 hover:text-orange-700 font-medium border border-orange-200 px-2 py-0.5 rounded-lg hover:bg-orange-50 whitespace-nowrap">
+                              🚫 Cancelar pendiente
+                            </button>
+                          )}
+                          {/* Cancelar línea completa */}
+                          <button onClick={() => setCancelModal({ type: 'item', itemId: item.id })}
+                            className="text-xs text-red-400 hover:text-red-600 font-medium whitespace-nowrap">
+                            Cancelar
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -1382,11 +1499,18 @@ export default function MscDetailPage() {
                       </label>
                     )}
                     {(sal as any).estatus !== 'cancelada' && !['completada','cancelada'].includes(sol.estatus) && (
-                      <button
-                        onClick={() => { setCancelSalidaModal({ salidaId: sal.id, receptor: sal.receptor_nombre }); setCancelSalidaMotivo('') }}
-                        className="border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-50">
-                        Cancelar salida
-                      </button>
+                      <>
+                        <button
+                          onClick={() => abrirDevolucion(sal)}
+                          className="border border-amber-200 text-amber-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-50">
+                          ↩ Devolución
+                        </button>
+                        <button
+                          onClick={() => { setCancelSalidaModal({ salidaId: sal.id, receptor: sal.receptor_nombre }); setCancelSalidaMotivo('') }}
+                          className="border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-50">
+                          Cancelar salida
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1737,6 +1861,164 @@ export default function MscDetailPage() {
               <button onClick={confirmarCancelacion}
                 className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600">
                 Confirmar cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Ajuste de cantidad ──────────────────────────────────────── */}
+      {ajusteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md p-6">
+            <h2 className="text-base font-bold text-gray-800 mb-1">Ajustar recepción</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Material: <strong className="font-mono">{ajusteModal.item.codigo}</strong>
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-500">Cantidad pedida:</span>
+                <strong>{ajusteModal.item.cantidad_pedida} {ajusteModal.item.um ?? ''}</strong>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-500">Cantidad recibida:</span>
+                <strong className="text-teal-600">{ajusteModal.rec} {ajusteModal.item.um ?? ''}</strong>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span className="text-amber-700">Diferencia (no recibida):</span>
+                <span className="text-amber-700">{ajusteModal.item.cantidad_pedida - ajusteModal.rec} {ajusteModal.item.um ?? ''}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Al ajustar, el sistema considerará <strong>{ajusteModal.rec} {ajusteModal.item.um ?? ''}</strong> como la cantidad final.
+              La diferencia quedará registrada en el historial.
+            </p>
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 block mb-1">Motivo del ajuste (opcional)</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-300 h-20 resize-none"
+                placeholder="Ej: El proveedor no pudo completar la entrega..."
+                value={ajusteMotivo}
+                onChange={e => setAjusteMotivo(e.target.value)} />
+            </div>
+            <div className="flex justify-between">
+              <button onClick={() => setAjusteModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
+                Cancelar
+              </button>
+              <button onClick={confirmarAjuste} disabled={savingAjuste}
+                className="bg-amber-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
+                {savingAjuste ? 'Guardando...' : 'Confirmar ajuste'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Cancelar pendiente ───────────────────────────────────────── */}
+      {cancelPendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md p-6">
+            <h2 className="text-base font-bold text-gray-800 mb-1">Cancelar unidades pendientes</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Material: <strong className="font-mono">{cancelPendModal.item.codigo}</strong>
+            </p>
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-500">Pedidas:</span>
+                <strong>{cancelPendModal.item.cantidad_pedida} {cancelPendModal.item.um ?? ''}</strong>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-500">Recibidas:</span>
+                <strong className="text-teal-600">
+                  {cancelPendModal.item.cantidad_pedida - cancelPendModal.pend} {cancelPendModal.item.um ?? ''}
+                </strong>
+              </div>
+              <div className="flex justify-between font-semibold border-t border-orange-200 pt-1 mt-1">
+                <span className="text-orange-700">Se cancelarán:</span>
+                <span className="text-orange-700">{cancelPendModal.pend} {cancelPendModal.item.um ?? ''}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Las {cancelPendModal.pend} unidades no recibidas quedarán canceladas. Lo ya recibido no se ve afectado.
+            </p>
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 block mb-1">Motivo (opcional)</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-300 h-20 resize-none"
+                placeholder="Ej: El cliente ya no requiere el resto del material..."
+                value={cancelPendMotivo}
+                onChange={e => setCancelPendMotivo(e.target.value)} />
+            </div>
+            <div className="flex justify-between">
+              <button onClick={() => setCancelPendModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
+                Volver
+              </button>
+              <button onClick={confirmarCancelPend} disabled={savingCancelPend}
+                className="bg-orange-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+                {savingCancelPend ? 'Cancelando...' : `Cancelar ${cancelPendModal.pend} unidades`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Devolución ───────────────────────────────────────────────── */}
+      {devModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h2 className="text-base font-bold text-gray-800">Registrar devolución</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Receptor: {devModal.salida.receptor_nombre}</p>
+              </div>
+              <button onClick={() => setDevModal(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="p-6 space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                El material devuelto regresará al stock disponible de esta solicitud.
+              </div>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    {['Código','Descripción','Entregado','Devolver','Motivo'].map(h => (
+                      <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {devModal.items.map((si: any, i: number) => (
+                    <tr key={si.id} className="border-b border-gray-100">
+                      <td className="px-2 py-2 font-mono font-semibold text-gray-800">{si.codigo}</td>
+                      <td className="px-2 py-2 text-gray-500 max-w-32 truncate">{si.descripcion}</td>
+                      <td className="px-2 py-2 text-right text-gray-700">{si.cantidad_entregada}</td>
+                      <td className="px-2 py-1">
+                        <input type="number" min="0" max={si.cantidad_entregada}
+                          className="w-20 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-teal-400"
+                          placeholder="0"
+                          value={devForm[i]?.cantidad ?? ''}
+                          onChange={e => setDevForm(f => f.map((d, j) => j === i ? { ...d, cantidad: e.target.value } : d))} />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-teal-400"
+                          placeholder="Motivo..."
+                          value={devForm[i]?.motivo ?? ''}
+                          onChange={e => setDevForm(f => f.map((d, j) => j === i ? { ...d, motivo: e.target.value } : d))} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-between px-6 py-4 border-t border-gray-200">
+              <button onClick={() => setDevModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
+                Cancelar
+              </button>
+              <button onClick={confirmarDevolucion} disabled={savingDev}
+                className="bg-amber-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
+                {savingDev ? 'Registrando...' : 'Confirmar devolución'}
               </button>
             </div>
           </div>
