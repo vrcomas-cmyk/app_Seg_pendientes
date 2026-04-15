@@ -78,6 +78,7 @@ export default function App() {
         <Route path="/crm/hub" element={<RouteGuard module="crm"><CrmHubPage /></RouteGuard>} />
         <Route path="/crm/prospectos" element={<RouteGuard module="crm"><CrmProspectosPage /></RouteGuard>} />
         <Route path="/crm/cedis-seguimiento" element={<RouteGuard module="crm"><CrmCedisSeguimientoPage /></RouteGuard>} />
+        <Route path="/cedis" element={<RouteGuard module="cedis"><CrmCedisSeguimientoPage /></RouteGuard>} />
         <Route path="/crm/:id" element={<CrmClientPage />} />
         <Route path="/crm/:clientId/followup/:followupId" element={<CrmFollowupPage />} />
         <Route path="/crm/:clientId/followup/:followupId/order/new" element={<CrmOrderPage />} />

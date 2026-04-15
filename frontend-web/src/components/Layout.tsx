@@ -72,6 +72,7 @@ export default function Layout() {
   const navLinks = [
     { to: '/tasks',   label: 'Pendientes', module: 'pendientes', always: true },
     { to: '/crm/hub',      label: 'CRM',        module: 'crm' },
+    { to: '/cedis',        label: 'CEDIS',      module: 'cedis' },
     { to: '/msc',     label: 'MSC',        module: 'msc' },
     { to: '/catalog', label: 'Catalogo',   module: 'catalogo' },
     { to: '/admin',   label: 'Admin',      module: 'admin' },

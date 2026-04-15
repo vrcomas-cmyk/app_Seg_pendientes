@@ -57,6 +57,16 @@ function MaterialInput({ value, onChange, onSelect }: {
   )
 }
 
+// ── History helpers ─────────────────────────────────────────────────────────
+const HIST_KEY = 'crm_client_search_history'
+function getHistory(): any[] {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY) ?? '[]') } catch { return [] }
+}
+function addToHistory(client: any) {
+  const prev = getHistory().filter((c: any) => c.id !== client.id)
+  localStorage.setItem(HIST_KEY, JSON.stringify([client, ...prev].slice(0, 5)))
+}
+
 function ClienteInput({ value, onChange, onSelect }: {
   value: string; onChange: (v: string) => void
   onSelect: (id: string, nombre: string, razon: string, noCliente: string, cliente: any) => void
@@ -64,6 +74,8 @@ function ClienteInput({ value, onChange, onSelect }: {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState<any[]>([])
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -104,8 +116,12 @@ function ClienteInput({ value, onChange, onSelect }: {
         ref={inputRef}
         value={value}
         onChange={e => doSearch(e.target.value)}
-        onFocus={() => { if (value.length >= 1 && (sugs.length > 0 || searched)) { updatePos(); setOpen(true) } }}
-        onBlur={() => setTimeout(() => setOpen(false), 300)}
+        onFocus={() => {
+          updatePos()
+          if (value.length >= 1 && (sugs.length > 0 || searched)) { setOpen(true) }
+          else { const h = getHistory(); setHistory(h); if (h.length > 0) { setShowHistory(true); setOpen(true) } }
+        }}
+        onBlur={() => setTimeout(() => { setOpen(false); setShowHistory(false) }, 300)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
         placeholder="Buscar por nombre, razón social o RFC" />
       {open && (sugs.length > 0 || searched) && createPortal(
@@ -115,13 +131,37 @@ function ClienteInput({ value, onChange, onSelect }: {
           background: 'white', border: '1px solid #e5e7eb',
           borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
         }}>
+          {showHistory && sugs.length === 0 && !searched && history.length > 0 && (
+            <div>
+              <p style={{ fontSize: 10, color: '#9ca3af', padding: '6px 14px 2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Recientes
+              </p>
+              {history.map((cl: any) => (
+                <button key={cl.id} type="button"
+                  onPointerDown={e => {
+                    e.preventDefault()
+                    onSelect(cl.id, cl.solicitante, cl.razon_social ?? '', cl.rfc ?? '', cl)
+                    setOpen(false); setSugs([]); setSearched(false); setShowHistory(false)
+                  }}
+                  style={{ display:'flex', flexDirection:'column', width:'100%', textAlign:'left',
+                    padding:'8px 14px', background:'transparent', border:'none',
+                    borderBottom:'1px solid #f3f4f6', cursor:'pointer', gap:2 }}
+                  onMouseOver={e=>(e.currentTarget.style.background='#f0fdf4')}
+                  onMouseOut={e=>(e.currentTarget.style.background='transparent')}>
+                  <span style={{ fontWeight:600, fontSize:12, color:'#374151' }}>🕐 {cl.razon_social ?? cl.solicitante}</span>
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>{cl.solicitante}{cl.rfc?` · RFC: ${cl.rfc}`:''}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {sugs.length > 0
             ? sugs.map(cl => (
                 <button key={cl.id} type="button"
                   onPointerDown={e => {
                     e.preventDefault()
+                    addToHistory({ id: cl.id, solicitante: cl.solicitante, razon_social: cl.razon_social, rfc: cl.rfc, gpo_vendedores: cl.gpo_vendedores, centro: cl.centro })
                     onSelect(cl.id, cl.solicitante, cl.razon_social ?? '', cl.rfc ?? '', cl)
-                    setOpen(false); setSugs([]); setSearched(false)
+                    setOpen(false); setSugs([]); setSearched(false); setShowHistory(false)
                   }}
                   style={{ display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left',
                     padding: '9px 14px', background: 'transparent', border: 'none',
@@ -186,6 +226,32 @@ export default function CrmVentaManualPage() {
   const [pastePreview, setPastePreview] = useState<any[]>([])
   const [tipoNegocio, setTipoNegocio] = useState<'venta' | 'donativo'>('venta')
   const [destinatarios, setDestinatarios] = useState<any[]>([])
+
+  // Pre-cargar cliente desde URL param
+  useEffect(() => {
+    const clientId = searchParams.get('client_id')
+    if (!clientId) return
+    supabase.from('crm_clients')
+      .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
+      .eq('id', clientId).single()
+      .then(({ data: cli }) => {
+        if (!cli) return
+        setClienteId(cli.id)
+        setClienteInfo({ razon: cli.razon_social || cli.solicitante, noCliente: cli.rfc ?? '' })
+        setClienteInput(cli.razon_social || cli.solicitante)
+        setForm(prev => ({
+          ...prev,
+          gpo_vendedor:  cli.gpo_vendedores ?? prev.gpo_vendedor,
+          solicitante:   cli.solicitante ?? prev.solicitante,
+          centro_pedido: cli.centro ?? prev.centro_pedido,
+        }))
+        supabase.from('crm_recipients').select('id, destinatario').eq('client_id', clientId).order('destinatario')
+          .then(({ data: recs }) => {
+            setDestinatarios(recs ?? [])
+            if (recs?.length === 1) setForm(prev => ({ ...prev, destinatario: recs[0].destinatario }))
+          })
+      })
+  }, [])
 
   // Pre-load client if ?client_id= param is present
   useEffect(() => {
