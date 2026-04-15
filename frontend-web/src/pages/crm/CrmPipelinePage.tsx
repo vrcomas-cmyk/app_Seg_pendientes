@@ -216,18 +216,44 @@ export default function CrmPipelinePage() {
     if (!archiveModal) return
     setSavingArchive(true)
     if (archiveModal.accion === 'archivar') {
-      await supabase.from('crm_offers').update({ etapa: 'cancelado', estatus: 'cancelado' }).eq('id', archiveModal.venta.id)
-      await supabase.from('crm_offer_items').update({ estatus: 'cancelado' }).eq('offer_id', archiveModal.venta.id)
+      // Only update etapa — estatus has its own constraint that does not include 'cancelado'
+      const { error } = await supabase
+        .from('crm_offers')
+        .update({ etapa: 'cancelado' })
+        .eq('id', archiveModal.venta.id)
+      if (error) {
+        toast.error(`Error al archivar: ${error.message}`)
+        setSavingArchive(false)
+        return
+      }
+      // Best-effort update on items (estatus 'rechazada' is valid)
+      await supabase.from('crm_offer_items')
+        .update({ estatus: 'rechazado' })
+        .eq('offer_id', archiveModal.venta.id)
+      // Update local state immediately without waiting for load()
+      setVentas(prev => prev.map(v =>
+        v.id === archiveModal.venta.id ? { ...v, etapa: 'cancelado' } : v
+      ))
       toast.success('Oferta archivada')
     } else {
-      // facturar — get invoice number from archiveMotivo field reused as factura
       const factura = archiveMotivo.trim()
-      await supabase.from('crm_offers').update({ etapa: 'facturado', estatus: 'cerrada' }).eq('id', archiveModal.venta.id)
+      const { error } = await supabase
+        .from('crm_offers')
+        .update({ etapa: 'facturado', estatus: 'cerrada' })
+        .eq('id', archiveModal.venta.id)
+      if (error) {
+        toast.error(`Error al facturar: ${error.message}`)
+        setSavingArchive(false)
+        return
+      }
       if (factura) {
         await supabase.from('crm_offer_items')
           .update({ numero_factura: factura, estatus: 'facturado' })
           .eq('offer_id', archiveModal.venta.id)
       }
+      setVentas(prev => prev.map(v =>
+        v.id === archiveModal.venta.id ? { ...v, etapa: 'facturado' } : v
+      ))
       toast.success('✓ Oferta facturada')
     }
     setArchiveModal(null); setArchiveMotivo(''); setSavingArchive(false)
