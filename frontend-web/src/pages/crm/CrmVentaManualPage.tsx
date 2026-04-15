@@ -72,12 +72,12 @@ function ClienteInput({ value, onChange, onSelect }: {
     // Two separate queries — OR with nullable column is unreliable in PostgREST
     const [{ data: byName }, { data: byNum }] = await Promise.all([
       supabase.from('crm_clients')
-        .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
+        .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
         .or(`solicitante.ilike.%${trimmed}%,razon_social.ilike.%${trimmed}%`)
         .limit(10),
       supabase.from('crm_clients')
-        .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
-        .ilike('no_cliente', `%${trimmed}%`)
+        .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
+        .or(`rfc.ilike.%${trimmed}%,solicitante.ilike.%${trimmed}%`)
         .limit(10),
     ])
     const seen = new Set<string>()
@@ -99,14 +99,11 @@ function ClienteInput({ value, onChange, onSelect }: {
           {sugs.length > 0
             ? sugs.map(c => (
                 <button key={c.id} type="button"
-                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSugs([]); setSearched(false) }}
+                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.rfc ?? '', c); setOpen(false); setSugs([]); setSearched(false) }}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                  {c.no_cliente && <span className="font-mono text-gray-400 flex-shrink-0">{c.no_cliente}</span>}
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 truncate">{c.razon_social ?? c.solicitante}</p>
-                    {c.razon_social && c.solicitante !== c.razon_social && (
-                      <p className="text-gray-400 text-xs truncate">{c.solicitante}</p>
-                    )}
+                    <p className="text-gray-400 text-xs truncate">{c.solicitante}{c.rfc ? ` · ${c.rfc}` : ''}</p>
                   </div>
                 </button>
               ))
@@ -482,10 +479,9 @@ export default function CrmVentaManualPage() {
                     // Autofill form fields from client data
                     setForm(prev => ({
                       ...prev,
-                      gpo_cliente:   cliente?.gpo_cliente   ?? prev.gpo_cliente,
-                      gpo_vendedor:  cliente?.gpo_vendedor  ?? prev.gpo_vendedor,
-                      solicitante:   cliente?.no_cliente    ?? cliente?.solicitante ?? prev.solicitante,
-                      centro_pedido: cliente?.centro        ?? prev.centro_pedido,
+                      gpo_vendedor:  cliente?.gpo_vendedores ?? prev.gpo_vendedor,
+                      solicitante:   cliente?.solicitante    ?? prev.solicitante,
+                      centro_pedido: cliente?.centro         ?? prev.centro_pedido,
                     }))
                     // Load destinatarios for this client
                     const { data: recs } = await supabase.from('crm_recipients')

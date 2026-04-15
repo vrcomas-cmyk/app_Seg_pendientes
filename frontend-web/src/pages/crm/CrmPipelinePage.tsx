@@ -72,7 +72,7 @@ export default function CrmPipelinePage() {
       .select(`
         id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta,
         client_id, folio_pedido, gpo_cliente, gpo_vendedor,
-        crm_clients(id, solicitante, razon_social, no_cliente),
+        crm_clients(id, solicitante, razon_social),
         crm_offer_items(id, material, descripcion, cantidad_aceptada, precio_aceptado,
           numero_factura, estatus, lote, caducidad, um, cedis_request_id,
           crm_cedis_requests(id, estatus, centro_origen, almacen_origen,
@@ -96,7 +96,7 @@ export default function CrmPipelinePage() {
       const cli = v.crm_clients
       return cli?.solicitante?.toLowerCase().includes(q) ||
         cli?.razon_social?.toLowerCase().includes(q) ||
-        cli?.no_cliente?.toLowerCase().includes(q) ||
+        
         v.notas?.toLowerCase().includes(q) ||
         v.folio_pedido?.toLowerCase().includes(q)
     }
@@ -191,7 +191,7 @@ export default function CrmPipelinePage() {
           await supabase.from('crm_cedis_history').insert({
             request_id: cedisReq.id,
             estatus: 'pendiente_solicitar',
-            nota: `Creado desde oferta CRM — ${confirmModal?.venta?.crm_clients?.razon_social ?? ''}`,
+            nota: `Creado desde oferta CRM — ${confirmModal?.venta?.crm_clients?.razon_social ?? confirmModal?.venta?.crm_clients?.solicitante ?? ''}`,
             created_by: user_id,
           })
         }
@@ -357,7 +357,7 @@ export default function CrmPipelinePage() {
                     {/* Fila 1: cliente + etapa + alerta */}
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <span className="text-sm font-semibold text-gray-800">
-                        {cli?.no_cliente ? `${cli.no_cliente} — ` : ''}{cli?.razon_social ?? cli?.solicitante ?? 'Sin cliente'}
+                        {cli?.razon_social ?? cli?.solicitante ?? 'Sin cliente'}
                       </span>
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{ background: etapa.bg, color: etapa.text }}>

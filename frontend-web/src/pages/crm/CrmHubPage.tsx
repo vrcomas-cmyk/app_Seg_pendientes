@@ -43,12 +43,12 @@ export default function CrmHubPage() {
     const [{ data: off }, { data: fup }] = await Promise.all([
       supabase.from('crm_offers')
         .select(`id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta,
-          client_id, folio_pedido, gpo_cliente, gpo_vendedor,
-          crm_clients(id, solicitante, razon_social, no_cliente),
+          client_id, folio_pedido,
+          crm_clients(id, solicitante, razon_social),
           crm_offer_items(id, material, cantidad_aceptada, precio_aceptado, estatus)`)
         .order('created_at', { ascending: false }),
       supabase.from('crm_followups')
-        .select('id, tipo, notas, fecha_seguimiento, created_at, client_id, crm_clients(solicitante, razon_social, no_cliente)')
+        .select('id, tipo, notas, fecha_seguimiento, created_at, client_id, crm_clients(solicitante, razon_social)')
         .order('fecha_seguimiento', { ascending: true, nullsFirst: false }),
     ])
     setOffers(off ?? [])
@@ -98,7 +98,7 @@ export default function CrmHubPage() {
       const cli = row.cliente
       return cli?.solicitante?.toLowerCase().includes(q) ||
         cli?.razon_social?.toLowerCase().includes(q) ||
-        cli?.no_cliente?.toLowerCase().includes(q) ||
+        
         row.folio?.toLowerCase().includes(q) ||
         row.notas?.toLowerCase().includes(q)
     }
@@ -190,7 +190,7 @@ export default function CrmHubPage() {
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <Badge etapa={row.etapa} tipoNegocio={row.tipo_negocio} />
                     <span className="text-sm font-semibold text-gray-800 truncate">
-                      {cli?.no_cliente ? `${cli.no_cliente} — ` : ''}{cli?.razon_social ?? cli?.solicitante ?? 'Sin cliente'}
+                      {cli?.razon_social ?? cli?.solicitante ?? 'Sin cliente'}
                     </span>
                     {isOverdue && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">⚠ Vencido</span>}
                   </div>
