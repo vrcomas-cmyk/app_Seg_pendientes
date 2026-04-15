@@ -6,7 +6,7 @@ import ContactsTable from '../../components/ContactsTable'
 import SugFilters from '../../components/SugFilters'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'ventas' | 'pendientes'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'ventas' | 'pendientes' | 'pipeline'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -195,7 +195,7 @@ export default function CrmClientPage() {
     { key: 'ofertas', label: `Ofertas (${offers.filter(o => (o.crm_offer_items ?? []).some((it: any) => !it.aceptado && it.estatus !== 'rechazado')).length})` },
     { key: 'ventas',        label: `Ventas (${ventas.length})` },
     { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
-    { key: 'pipeline',      label: `Pipeline (${offers.filter(o => !['cancelado','cerrada','facturado'].includes(o.etapa ?? '')).length})` },
+    { key: 'pipeline',      label: `Pipeline (${offers.length})` },
   ]
 
   const TIPO_LABEL: Record<string, string> = {
@@ -241,23 +241,39 @@ export default function CrmClientPage() {
               {client.centro && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">Centro: {client.centro}</span>}
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0 flex-wrap">
-            <button onClick={() => nav(`/crm/venta-manual?client_id=${id}`)}
-              className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
-              💰 Nueva venta
-            </button>
-            <button onClick={() => nav(`/crm/${id}/offer/new?source=manual`)}
-              className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-              + Oferta manual
-            </button>
-            <Link to={`/crm/${id}/followup/new`}
-              className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
-              + Seguimiento
-            </Link>
-            <button onClick={() => nav(`/crm/reports?solicitante=${encodeURIComponent(client.solicitante ?? '')}`)}
-              className="border border-gray-200 text-gray-500 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-              SAP ↗
-            </button>
+          <div className="flex flex-col items-end gap-2">
+            {/* Teléfonos clickeables */}
+            {(client.telefonos ?? []).length > 0 && (
+              <div className="flex gap-1 flex-wrap justify-end">
+                {(client.telefonos ?? []).map((t: string) => (
+                  <a key={t} href={`tel:${t}`}
+                    className="flex items-center gap-1 bg-green-50 border border-green-200 text-green-700 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-green-100">
+                    📞 {t}
+                  </a>
+                ))}
+                {(client.correos ?? []).map((e: string) => (
+                  <a key={e} href={`mailto:${e}`}
+                    className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 px-2.5 py-1 rounded-full text-xs font-medium hover:bg-blue-100">
+                    ✉ {e}
+                  </a>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap justify-end">
+              <button
+                onClick={() => nav(`/crm/venta-manual?client_id=${id}&client_nombre=${encodeURIComponent(client.razon_social ?? client.solicitante ?? '')}`)}
+                className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-700">
+                + Nueva venta
+              </button>
+              <button onClick={() => { setTab('pipeline') }}
+                className="border border-teal-300 text-teal-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
+                Ver pipeline
+              </button>
+              <Link to={`/crm/${id}/followup/new`}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                + Seguimiento
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -328,8 +344,7 @@ export default function CrmClientPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.telefonos ?? []).map((t: string) => (
                 <span key={t} className="flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
-                  <a href={`tel:${t}`} className="hover:text-teal-600 hover:underline">{t}</a>
-                  <button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  {t}<button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
               {!(client.telefonos ?? []).length && <span className="text-sm text-gray-400">Sin teléfonos</span>}
@@ -346,8 +361,7 @@ export default function CrmClientPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.correos ?? []).map((e: string) => (
                 <span key={e} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full">
-                  <a href={`mailto:${e}`} className="hover:underline">{e}</a>
-                  <button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  {e}<button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
               {!(client.correos ?? []).length && <span className="text-sm text-gray-400">Sin correos</span>}
@@ -682,78 +696,6 @@ export default function CrmClientPage() {
         </div>
       )}
 
-      {/* TAB: Pipeline — mini seguimiento de este cliente */}
-      {tab === 'pipeline' && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-            <h2 className="font-semibold text-gray-700">Pipeline del cliente</h2>
-            <button onClick={() => nav(`/crm/venta-manual?client_id=${id}`)}
-              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700">
-              + Nueva venta
-            </button>
-          </div>
-          {offers.length === 0 && <p className="text-sm text-gray-400 p-6">Sin registros en pipeline.</p>}
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  {['Etapa','Tipo','Folio','Materiales','Total','Creado','Acciones'].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {offers.map(offer => {
-                  const items = offer.crm_offer_items ?? []
-                  const total = items.reduce((a: number, i: any) => a + ((i.cantidad_aceptada ?? i.precio_oferta ?? 0) * (i.precio_aceptado ?? 0)), 0)
-                  const etapaColors: Record<string, string> = {
-                    oferta: 'bg-gray-100 text-gray-600', venta: 'bg-blue-100 text-blue-700',
-                    cedis: 'bg-amber-100 text-amber-700', transmision: 'bg-purple-100 text-purple-700',
-                    facturado: 'bg-green-100 text-green-700', cancelado: 'bg-gray-100 text-gray-400',
-                  }
-                  const isArchivado = ['cancelado','cerrada'].includes(offer.etapa ?? '')
-                  return (
-                    <tr key={offer.id}
-                      className={`border-b border-gray-100 hover:bg-gray-50 ${isArchivado ? 'opacity-50' : ''}`}>
-                      <td className="px-3 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full font-medium text-xs ${etapaColors[offer.etapa ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
-                          {offer.etapa ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-500">
-                        {offer.tipo_negocio === 'donativo' ? '🎁 Donativo' : '💰 Venta'}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-blue-700">
-                        {offer.folio_pedido ?? <span className="text-gray-300 italic">sin folio</span>}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">{items.length}</td>
-                      <td className="px-3 py-2.5 font-semibold text-gray-700">
-                        {total > 0 ? `$${total.toLocaleString('es-MX',{minimumFractionDigits:0})}` : '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-400">
-                        {new Date(offer.created_at).toLocaleDateString('es-MX')}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex gap-1">
-                          <button onClick={() => nav(`/crm/pipeline?id=${offer.id}`)}
-                            className="text-xs border border-teal-200 text-teal-600 px-2 py-1 rounded hover:bg-teal-50">
-                            Gestionar →
-                          </button>
-                          <button onClick={() => nav(`/crm/${id}/offer/${offer.id}`)}
-                            className="text-xs border border-gray-200 text-gray-400 px-2 py-1 rounded hover:bg-gray-50">
-                            Editar ↗
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* TAB: Ventas */}
       {tab === 'ventas' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -826,6 +768,84 @@ export default function CrmClientPage() {
               </span>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* TAB: Pipeline — ofertas del cliente con seguimiento inline */}
+      {tab === 'pipeline' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Pipeline del cliente</h2>
+            <button
+              onClick={() => nav(`/crm/venta-manual?client_id=${id}&client_nombre=${encodeURIComponent(client.razon_social ?? client.solicitante ?? '')}`)}
+              className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-700">
+              + Nueva venta
+            </button>
+          </div>
+          {offers.length === 0 && (
+            <p className="text-sm text-gray-400 p-6">Sin ofertas para este cliente.</p>
+          )}
+          {offers.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold">
+                    <th className="px-3 py-2.5 text-left">Etapa</th>
+                    <th className="px-3 py-2.5 text-left">Folio SAP</th>
+                    <th className="px-3 py-2.5 text-right">Materiales</th>
+                    <th className="px-3 py-2.5 text-right">Valor</th>
+                    <th className="px-3 py-2.5 text-left">Fecha</th>
+                    <th className="px-3 py-2.5 text-left">Notas</th>
+                    <th className="px-3 py-2.5 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {offers.map(offer => {
+                    const items = offer.crm_offer_items ?? []
+                    const total = items.reduce((a: number, it: any) =>
+                      a + ((it.cantidad_aceptada ?? it.cantidad_ofertada ?? 0) * (it.precio_aceptado ?? it.precio_oferta ?? 0)), 0)
+                    const etapaColors: Record<string, string> = {
+                      oferta: 'bg-gray-100 text-gray-600',
+                      venta: 'bg-blue-100 text-blue-700',
+                      cedis: 'bg-amber-100 text-amber-700',
+                      transmision: 'bg-purple-100 text-purple-700',
+                      facturado: 'bg-green-100 text-green-700',
+                      cancelado: 'bg-gray-100 text-gray-400',
+                    }
+                    const etapaLabel: Record<string, string> = {
+                      oferta:'Oferta', venta:'Venta', cedis:'CEDIS',
+                      transmision:'Transmisión', facturado:'Facturado', cancelado:'Archivada'
+                    }
+                    return (
+                      <tr key={offer.id} className={`border-b border-gray-100 hover:bg-gray-50 ${offer.etapa === 'cancelado' ? 'opacity-50' : ''}`}>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded-full font-medium text-xs ${etapaColors[offer.etapa] ?? 'bg-gray-100 text-gray-500'}`}>
+                            {etapaLabel[offer.etapa] ?? offer.etapa}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-blue-600 font-semibold">{offer.folio_pedido ?? '—'}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">{items.length}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-700">
+                          {total > 0 ? `$${total.toLocaleString('es-MX',{minimumFractionDigits:0})}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-gray-400 whitespace-nowrap">
+                          {offer.fecha_venta ? new Date(offer.fecha_venta).toLocaleDateString('es-MX') : new Date(offer.created_at).toLocaleDateString('es-MX')}
+                        </td>
+                        <td className="px-3 py-2 text-gray-400 max-w-40 truncate italic">{offer.notas ?? ''}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => nav(`/crm/pipeline?id=${offer.id}`)}
+                            className="text-xs text-teal-600 hover:underline border border-teal-200 px-2 py-1 rounded-lg hover:bg-teal-50">
+                            Gestionar →
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
