@@ -28,6 +28,7 @@ import CrmCedisSeguimientoPage from './pages/crm/CrmCedisSeguimientoPage'
 import CrmVentaManualPage from './pages/crm/CrmVentaManualPage'
 import CrmVentaExcelPage from './pages/crm/CrmVentaExcelPage'
 import CrmPipelinePage from './pages/crm/CrmPipelinePage'
+import CrmHubPage from './pages/crm/CrmHubPage'
 import CatalogPage from './pages/CatalogPage'
 import AdminPage from './pages/AdminPage'
 import RouteGuard from './components/RouteGuard'
@@ -74,8 +75,9 @@ export default function App() {
         <Route path="/crm/import" element={<CrmImportPage />} />
         <Route path="/crm/new" element={<CrmNewClientPage />} />
         <Route path="/crm/pipeline" element={<RouteGuard module="crm"><CrmPipelinePage /></RouteGuard>} />
+        <Route path="/crm/hub" element={<RouteGuard module="crm"><CrmHubPage /></RouteGuard>} />
         <Route path="/crm/prospectos" element={<RouteGuard module="crm"><CrmProspectosPage /></RouteGuard>} />
-        <Route path="/cedis" element={<RouteGuard module="cedis"><CrmCedisSeguimientoPage /></RouteGuard>} />
+        <Route path="/crm/cedis-seguimiento" element={<RouteGuard module="crm"><CrmCedisSeguimientoPage /></RouteGuard>} />
         <Route path="/crm/:id" element={<CrmClientPage />} />
         <Route path="/crm/:clientId/followup/:followupId" element={<CrmFollowupPage />} />
         <Route path="/crm/:clientId/followup/:followupId/order/new" element={<CrmOrderPage />} />

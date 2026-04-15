@@ -70,12 +70,11 @@ export default function Layout() {
   )
 
   const navLinks = [
-    { to: '/tasks',        label: 'Pendientes', module: 'pendientes', always: true },
-    { to: '/crm/pipeline', label: 'CRM',        module: 'crm' },
-    { to: '/msc',          label: 'MSC',        module: 'msc' },
-    { to: '/cedis',        label: 'CEDIS',      module: 'cedis' },
-    { to: '/catalog',      label: 'Catálogo',   module: 'catalogo' },
-    { to: '/admin',        label: 'Admin',      module: 'admin' },
+    { to: '/tasks',   label: 'Pendientes', module: 'pendientes', always: true },
+    { to: '/crm/hub',      label: 'CRM',        module: 'crm' },
+    { to: '/msc',     label: 'MSC',        module: 'msc' },
+    { to: '/catalog', label: 'Catalogo',   module: 'catalogo' },
+    { to: '/admin',   label: 'Admin',      module: 'admin' },
   ].filter(l => l.always || hasModule(l.module))
 
   return (
@@ -101,7 +100,7 @@ export default function Layout() {
 
           {/* Alertas */}
           {totalAlerts > 0 && hasModule('crm') && (
-            <button onClick={() => nav('/crm/pipeline')}
+            <button onClick={() => nav('/crm/hub')}
               className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition">
               <span className="text-lg">🔔</span>
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">

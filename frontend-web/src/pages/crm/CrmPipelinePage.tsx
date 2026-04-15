@@ -54,6 +54,9 @@ export default function CrmPipelinePage() {
   const [confirmModal, setConfirmModal] = useState<{ venta: any; items: any[] } | null>(null)
   const [confirmItems, setConfirmItems] = useState<Record<string, {
     aceptado: boolean; cantidad: string; lote: string; caducidad: string; comentario: string
+    requiereCedis: boolean
+    cedisOrigen: string; cedisAlmacenOrigen: string
+    cedisDestino: string; cedisAlmacenDestino: string
   }>>({})
   const [savingConfirm, setSavingConfirm] = useState(false)
 
@@ -71,7 +74,9 @@ export default function CrmPipelinePage() {
         client_id, folio_pedido, gpo_cliente, gpo_vendedor,
         crm_clients(id, solicitante, razon_social, no_cliente),
         crm_offer_items(id, material, descripcion, cantidad_aceptada, precio_aceptado,
-          numero_factura, estatus, lote, caducidad, um)
+          numero_factura, estatus, lote, caducidad, um, cedis_request_id,
+          crm_cedis_requests(id, estatus, centro_origen, almacen_origen,
+            centro_destino, almacen_destino, cantidad_pedida, cantidad, created_at))
       `)
       .order('created_at', { ascending: false })
     setVentas(data ?? [])
@@ -112,6 +117,11 @@ export default function CrmPipelinePage() {
         lote:      item.lote ?? '',
         caducidad: item.caducidad ?? '',
         comentario: '',
+        requiereCedis:         false,
+        cedisOrigen:           '',
+        cedisAlmacenOrigen:    '',
+        cedisDestino:          '',
+        cedisAlmacenDestino:   '',
       }
     })
     setConfirmItems(initState)
@@ -155,6 +165,36 @@ export default function CrmPipelinePage() {
           comentario: ci.comentario,
           created_by: user_id,
         })
+      }
+      // Create CEDIS request if needed
+      if (ci.aceptado && ci.requiereCedis && ci.cedisOrigen && ci.cedisDestino) {
+        const { data: cedisReq } = await supabase.from('crm_cedis_requests').insert({
+          codigo:           item.material,
+          descripcion:      item.descripcion,
+          cantidad:         parseFloat(ci.cantidad) || item.cantidad_aceptada || 0,
+          cantidad_pedida:  parseFloat(ci.cantidad) || item.cantidad_aceptada || 0,
+          centro_origen:    ci.cedisOrigen,
+          almacen_origen:   ci.cedisAlmacenOrigen || null,
+          centro_destino:   ci.cedisDestino,
+          almacen_destino:  ci.cedisAlmacenDestino || null,
+          tipo_movimiento:  'para_pedido',
+          folio_pedido_destino: folioInput.trim() || null,
+          crm_offer_item_id: item.id,
+          estatus:          'pendiente_solicitar',
+          origen:           'crm',
+          created_by:       user_id,
+        }).select('id').single()
+        if (cedisReq) {
+          await supabase.from('crm_offer_items')
+            .update({ cedis_request_id: cedisReq.id, estatus: 'solicitud_cedis', requiere_traslado: true })
+            .eq('id', item.id)
+          await supabase.from('crm_cedis_history').insert({
+            request_id: cedisReq.id,
+            estatus: 'pendiente_solicitar',
+            nota: `Creado desde oferta CRM — ${confirmModal?.venta?.crm_clients?.razon_social ?? ''}`,
+            created_by: user_id,
+          })
+        }
       }
     }
 
@@ -442,6 +482,48 @@ export default function CrmPipelinePage() {
                   {v.notas && (
                     <p className="text-xs text-gray-500 mt-2 italic">📝 {v.notas}</p>
                   )}
+
+                  {/* CEDIS vinculadas a esta oferta */}
+                  {(() => {
+                    const itemsConCedis = items.filter((i: any) => i.crm_cedis_requests)
+                    if (itemsConCedis.length === 0) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                          📦 Solicitudes CEDIS
+                        </p>
+                        <div className="space-y-1.5">
+                          {itemsConCedis.map((item: any) => {
+                            const req = item.crm_cedis_requests
+                            const etapaCedis = {
+                              pendiente_solicitar: { label: 'Pendiente solicitar', color: 'bg-gray-100 text-gray-600' },
+                              solicitado:          { label: 'Solicitado',          color: 'bg-blue-100 text-blue-700' },
+                              en_transito:         { label: 'En tránsito',         color: 'bg-amber-100 text-amber-700' },
+                              recibido:            { label: 'Recibido',            color: 'bg-green-100 text-green-700' },
+                              cancelado:           { label: 'Cancelado',           color: 'bg-gray-100 text-gray-400' },
+                            }[req.estatus] ?? { label: req.estatus, color: 'bg-gray-100 text-gray-500' }
+                            return (
+                              <div key={req.id} className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs">
+                                <span className="font-mono font-semibold text-gray-800">{item.material}</span>
+                                <span className="text-gray-400">·</span>
+                                <span className="text-gray-600">{req.centro_origen} → {req.centro_destino}</span>
+                                <span className="text-gray-400">·</span>
+                                <span className={`px-2 py-0.5 rounded-full font-medium ${etapaCedis.color}`}>
+                                  {etapaCedis.label}
+                                </span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); nav('/cedis') }}
+                                  className="ml-auto text-xs text-amber-600 hover:underline flex-shrink-0">
+                                  Ver en CEDIS →
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Cerrar / Cancelar */}
                   {!['facturado','cancelado','cerrada'].includes(v.estatus ?? '') && (
                     <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
@@ -509,7 +591,7 @@ export default function CrmPipelinePage() {
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-gray-200">
-                    {['✓','Material','Descripción','Cant. ofertada','Cant. confirmar','Lote','Caducidad','Comentario (si rechaza)'].map(h => (
+                    {['✓','Material','Descripción','Cant. ofertada','Cant. confirmar','Lote','Caducidad','Comentario (si rechaza)','CEDIS'].map(h => (
                       <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -561,7 +643,44 @@ export default function CrmPipelinePage() {
                             value={ci.comentario}
                             onChange={e => setConfirmItems(prev => ({ ...prev, [item.id]: { ...ci, comentario: e.target.value } }))} />
                         </td>
+                        {/* CEDIS toggle */}
+                        <td className="px-2 py-1">
+                          {ci.aceptado && (
+                            <button
+                              onClick={() => setConfirmItems(prev => ({ ...prev, [item.id]: { ...ci, requiereCedis: !ci.requiereCedis } }))}
+                              className={`text-xs px-2 py-1 rounded-lg border font-medium transition ${ci.requiereCedis ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200 hover:border-amber-300'}`}
+                              title="Requiere traslado CEDIS">
+                              📦 CEDIS
+                            </button>
+                          )}
+                        </td>
                       </tr>
+                      {/* CEDIS fields row — only if toggled */}
+                      {ci.aceptado && ci.requiereCedis && (
+                        <tr className="bg-amber-50 border-b border-amber-100">
+                          <td colSpan={2} />
+                          <td colSpan={6} className="px-2 py-2">
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <span className="text-xs text-amber-700 font-semibold flex-shrink-0">Traslado:</span>
+                              {[
+                                { label: 'C.Origen', field: 'cedisOrigen', w: 'w-20' },
+                                { label: 'Alm.Orig', field: 'cedisAlmacenOrigen', w: 'w-20' },
+                                { label: '→ C.Destino', field: 'cedisDestino', w: 'w-20' },
+                                { label: 'Alm.Dest', field: 'cedisAlmacenDestino', w: 'w-20' },
+                              ].map(f => (
+                                <div key={f.field} className="flex items-center gap-1">
+                                  <label className="text-xs text-gray-500 flex-shrink-0">{f.label}</label>
+                                  <input className={`${f.w} border border-amber-300 rounded px-2 py-1 text-xs outline-none focus:border-amber-500 bg-white`}
+                                    placeholder={f.label.includes('C.') ? '1031' : '0001'}
+                                    value={(ci as any)[f.field]}
+                                    onChange={e => setConfirmItems(prev => ({ ...prev, [item.id]: { ...ci, [f.field]: e.target.value } }))} />
+                                </div>
+                              ))}
+                              <span className="text-xs text-amber-600">Se creará solicitud en CEDIS automáticamente</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     )
                   })}
                 </tbody>

@@ -122,7 +122,7 @@ export default function CrmReportsPage() {
   const [tab, setTab] = useState<TabType>('suggestions')
   const [rows, setRows] = useState<any[]>([])
   const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -195,35 +195,40 @@ export default function CrmReportsPage() {
     return q
   }, [tab, fuente, centro, solicitante, soloDisponibles, debouncedSearch])
 
-  // Carga inicial (reset)
-  useEffect(() => {
+  // Ejecutar búsqueda — se dispara solo cuando hasSearched=true
+  const ejecutarBusqueda = useCallback(() => {
+    setHasSearched(true)
     setLoading(true)
     setRows([])
     setPage(0)
     setSelected([])
-    buildQuery(0).then(async ({ data, count, error }) => {
+    buildQuery(0).then(({ data, count, error }) => {
       if (error) console.error(error)
-      const initialRows = data ?? []
-      setRows(initialRows)
+      setRows(data ?? [])
       setTotal(count ?? 0)
+      setHasMore((data?.length ?? 0) === PAGE_SIZE)
       setLoading(false)
-      setViewPage(0)
-      // Auto-cargar el resto en background
-      const totalCount = count ?? 0
-      if (initialRows.length < totalCount) {
-        let accumulated = [...initialRows]
-        let offset = PAGE_SIZE
-        while (offset < totalCount) {
-          const { data: more } = await buildQuery(offset)
-          if (!more || more.length === 0) break
-          accumulated = [...accumulated, ...more]
-          setRows([...accumulated])
-          offset += PAGE_SIZE
-        }
-      }
-      setHasMore(false)
     })
+  }, [buildQuery])
+
+  // Re-lanzar automáticamente SOLO si ya se hizo una búsqueda previa y cambia un filtro
+  useEffect(() => {
+    if (!hasSearched) return
+    ejecutarBusqueda()
   }, [tab, fuente, centro, solicitante, soloDisponibles, debouncedSearch])
+
+  // Sugerencias se cargan solas (son 15k, rápido). Consumo requiere filtro.
+  useEffect(() => {
+    if (tab === 'suggestions') {
+      ejecutarBusqueda()
+    } else {
+      // Reset para consumo — requiere acción del usuario
+      setHasSearched(false)
+      setRows([])
+      setTotal(0)
+      setHasMore(false)
+    }
+  }, [tab])
 
   const loadMore = async () => {
     setLoadingMore(true)
@@ -242,14 +247,14 @@ export default function CrmReportsPage() {
     setSelected(prev => prev.length === rows.length ? [] : rows.map(r => r.id))
 
   const clearFilters = () => {
-    setSearch(''); setFuente(''); setCentro(''); setSolicitante(''); setSoloDisponibles(false)
+    setSearch(''); setFuente(''); setCentro(''); setSolicitante(''); setSoloDisponibles(false); setHasSearched(false); setRows([]); setTotal(0)
   }
 
   const hasFilters = search || fuente || centro || solicitante || soloDisponibles
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
   const [showColFilters, setShowColFilters] = useState(false)
-  const [viewPageSize, setViewPageSize] = useState<number | 'all'>(500)
-  const [viewPage, setViewPage] = useState(0)
+  // Demand load: don't fire query until user provides at least one filter
+  const [hasSearched, setHasSearched] = useState(false)
 
   const exportExcel = () => {
     const cols = tab === 'suggestions' ? SUGG_COLS : CONS_COLS
@@ -278,11 +283,6 @@ export default function CrmReportsPage() {
       return String(row[key] ?? '').toLowerCase().includes(val.toLowerCase())
     })
   })
-
-  const totalVisible = visibleRows.length
-  const vpSize = viewPageSize === 'all' ? totalVisible : viewPageSize
-  const totalViewPages = viewPageSize === 'all' ? 1 : Math.ceil(totalVisible / vpSize)
-  const pagedRows = visibleRows.slice(viewPage * vpSize, (viewPage + 1) * vpSize)
 
   const createOffersFromSelection = async () => {
     if (selected.length === 0) return
@@ -382,9 +382,7 @@ export default function CrmReportsPage() {
             <h1 className="text-xl font-bold text-gray-800">Reportes globales</h1>
           </div>
           <p className="text-sm text-gray-400">
-            {loading
-              ? `Cargando... (${rows.length} de ${total})`
-              : `${visibleRows.length} filtrados de ${rows.length} cargados (total ${total})`}
+            {loading ? 'Buscando...' : !hasSearched && tab === 'consumption' ? 'Ingresa un filtro para buscar' : `${visibleRows.length} de ${rows.length} (total ${total}) registros`}
             {selected.length > 0 && ` · ${selected.length} seleccionados`}
           </p>
         </div>
@@ -414,37 +412,21 @@ export default function CrmReportsPage() {
       {showColFilters && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm font-semibold text-gray-700">
-              Filtrar por columna
-              {Object.values(colFilters).filter(Boolean).length > 0 && (
-                <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">
-                  {Object.values(colFilters).filter(Boolean).length} activo(s)
-                </span>
-              )}
-            </p>
+            <p className="text-sm font-semibold text-gray-700">Filtrar por columna</p>
             <button onClick={() => setColFilters({})}
-              className="text-xs text-red-500 hover:text-red-700 font-medium">
-              Limpiar todos ×
-            </button>
+              className="text-xs text-red-500 hover:text-red-700">Limpiar filtros</button>
           </div>
-          <div className="overflow-y-auto" style={{ maxHeight: '260px' }}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-              {(tab === 'suggestions' ? SUGG_COLS : CONS_COLS).map(col => (
-                <div key={col.key}>
-                  <label className={`text-xs block mb-0.5 truncate ${colFilters[col.key] ? 'text-teal-600 font-semibold' : 'text-gray-400'}`}
-                    title={col.label}>
-                    {col.label}
-                  </label>
-                  <input
-                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none ${
-                      colFilters[col.key] ? 'border-teal-400 bg-teal-50' : 'border-gray-200 focus:border-teal-400'
-                    }`}
-                    placeholder="Filtrar..."
-                    value={colFilters[col.key] ?? ''}
-                    onChange={e => setColFilters(prev => ({ ...prev, [col.key]: e.target.value }))} />
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(tab === 'suggestions' ? SUGG_COLS : CONS_COLS).slice(0, 12).map(col => (
+              <div key={col.key}>
+                <label className="text-xs text-gray-400 block mb-0.5">{col.label}</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400"
+                  placeholder={`Filtrar...`}
+                  value={colFilters[col.key] ?? ''}
+                  onChange={e => setColFilters(prev => ({ ...prev, [col.key]: e.target.value }))} />
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -467,20 +449,32 @@ export default function CrmReportsPage() {
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 flex-1 min-w-48"
           placeholder="Buscar en material, descripción, solicitante, destinatario..."
           value={search} onChange={e => setSearch(e.target.value)} />
+        <button onClick={ejecutarBusqueda}
+          className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
+          Buscar
+        </button>
         <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
           value={solicitante} onChange={e => setSolicitante(e.target.value)}>
           <option value="">Todos los solicitantes</option>
           {solicitantes.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         {fuentes.length > 0 && (
-          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
+          <button onClick={ejecutarBusqueda}
+          className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
+          Buscar
+        </button>
+        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
             value={fuente} onChange={e => setFuente(e.target.value)}>
             <option value="">Todas las fuentes</option>
             {fuentes.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         )}
         {centros.length > 0 && (
-          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
+          <button onClick={ejecutarBusqueda}
+          className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
+          Buscar
+        </button>
+        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
             value={centro} onChange={e => setCentro(e.target.value)}>
             <option value="">Todos los centros</option>
             {centros.map(c => <option key={c} value={c}>{c}</option>)}
@@ -501,6 +495,17 @@ export default function CrmReportsPage() {
 
       {/* Tabla */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Placeholder para Consumo antes de buscar */}
+        {!loading && !hasSearched && tab === 'consumption' && (
+          <div className="p-16 text-center">
+            <div className="text-4xl mb-3">🔍</div>
+            <p className="text-gray-600 font-medium mb-1">Reporte Consumo</p>
+            <p className="text-gray-400 text-sm mb-4">
+              Este reporte contiene ~200,000 registros. Ingresa un filtro arriba y presiona <strong>Buscar</strong> para cargar los resultados.
+            </p>
+            <p className="text-xs text-gray-300">Puedes filtrar por Solicitante, Centro, Fuente o buscar por material.</p>
+          </div>
+        )}
         {loading && (
           <div className="p-8 text-center">
             <p className="text-sm text-gray-400">Cargando registros...</p>
@@ -531,7 +536,7 @@ export default function CrmReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedRows.map(row => (
+                  {rows.map(row => (
                     <tr key={row.id}
                       onClick={() => toggleRow(row.id)}
                       className={`border-b border-gray-100 cursor-pointer transition ${
@@ -555,58 +560,28 @@ export default function CrmReportsPage() {
               </table>
             </div>
 
-            {/* Footer con paginación */}
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <p className="text-xs text-gray-500">
-                    {viewPageSize === 'all'
-                      ? `Mostrando todos (${visibleRows.length})`
-                      : `${viewPage * vpSize + 1}–${Math.min((viewPage + 1) * vpSize, totalVisible)} de ${totalVisible}`}
-                    {rows.length < total && (
-                      <span className="text-amber-500 ml-2">· cargando {rows.length}/{total}...</span>
-                    )}
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-400">Ver:</span>
-                    {([500, 1000, 2000, 'all'] as (number | 'all')[]).map(v => (
-                      <button key={String(v)}
-                        onClick={() => { setViewPageSize(v); setViewPage(0) }}
-                        className={`px-2 py-1 text-xs rounded font-medium border transition ${
-                          viewPageSize === v
-                            ? 'bg-teal-600 text-white border-teal-600'
-                            : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                        }`}>
-                        {v === 'all' ? 'Todos' : v}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {selected.length > 0 && (
-                    <button onClick={createOffersFromSelection} disabled={creatingOffer}
-                      className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
-                      {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length}`}
-                    </button>
-                  )}
-                  {totalViewPages > 1 && (
-                    <>
-                      <button onClick={() => setViewPage(p => Math.max(0, p - 1))}
-                        disabled={viewPage === 0}
-                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-white">
-                        ← Anterior
-                      </button>
-                      <span className="text-xs text-gray-500">
-                        {viewPage + 1} / {totalViewPages}
-                      </span>
-                      <button onClick={() => setViewPage(p => Math.min(totalViewPages - 1, p + 1))}
-                        disabled={viewPage >= totalViewPages - 1}
-                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-white">
-                        Siguiente →
-                      </button>
-                    </>
-                  )}
-                </div>
+            {/* Footer con cargar más */}
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+              <p className="text-xs text-gray-400">
+                Mostrando {rows.length} de {total} registros
+                {hasFilters && ' (filtrados)'}
+              </p>
+              <div className="flex items-center gap-3">
+                {selected.length > 0 && (
+                  <button onClick={createOffersFromSelection} disabled={creatingOffer}
+                    className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+                    {creatingOffer ? 'Generando...' : `Generar oferta(s) con ${selected.length}`}
+                  </button>
+                )}
+                {hasMore && (
+                  <button onClick={loadMore} disabled={loadingMore}
+                    className="border border-gray-200 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50">
+                    {loadingMore ? 'Cargando...' : `Cargar ${PAGE_SIZE} más`}
+                  </button>
+                )}
+                {!hasMore && rows.length > 0 && (
+                  <span className="text-xs text-gray-300">Todos los registros cargados</span>
+                )}
               </div>
             </div>
           </>
