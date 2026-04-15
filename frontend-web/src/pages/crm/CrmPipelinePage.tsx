@@ -598,7 +598,10 @@ export default function CrmPipelinePage() {
                 </thead>
                 <tbody>
                   {confirmModal.items.map((item: any) => {
-                    const ci = confirmItems[item.id] ?? { aceptado: true, cantidad: '', lote: '', caducidad: '', comentario: '' }
+                    const ci = confirmItems[item.id] ?? {
+                      aceptado: true, cantidad: '', lote: '', caducidad: '', comentario: '',
+                      requiereCedis: false, cedisOrigen: '', cedisAlmacenOrigen: '', cedisDestino: '', cedisAlmacenDestino: '',
+                    }
                     return (<>
                       <tr key={item.id} className={`border-b border-gray-100 ${!ci.aceptado ? 'opacity-50 bg-red-50' : ''}`}>
                         <td className="px-2 py-2">
