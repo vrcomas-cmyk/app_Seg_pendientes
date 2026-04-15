@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -34,12 +34,17 @@ function diasDesdeVenta(fechaVenta: string | null): number {
 
 export default function CrmPipelinePage() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const [ventas, setVentas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterEtapa, setFilterEtapa] = useState<string>('activas')
+  const [filterEtapa, setFilterEtapa] = useState<string>(
+    () => searchParams.get('id') ? '' : 'activas'
+  )
   const [search, setSearch] = useState('')
   const [showNueva, setShowNueva] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(
+    () => searchParams.get('id')
+  )
 
   // Modal folio SAP para avanzar oferta→venta
   const [folioModal, setFolioModal] = useState<{ venta: any } | null>(null)

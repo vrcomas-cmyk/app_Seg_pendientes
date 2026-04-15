@@ -182,7 +182,7 @@ export default function CrmHubPage() {
             <div key={row._id}
               className={`px-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition cursor-pointer ${isOverdue ? 'bg-orange-50' : ''}`}
               onClick={() => {
-                if (row._type === 'offer') nav(`/crm/pipeline`)
+                if (row._type === 'offer') nav(`/crm/pipeline?id=${row._id}`)
                 else nav('/crm')
               }}>
               <div className="flex justify-between items-start gap-3 flex-wrap">
@@ -209,7 +209,7 @@ export default function CrmHubPage() {
                   )}
                   {row._type === 'offer' && !['cancelado','cerrada','facturado'].includes(row.etapa) && (
                     <button
-                      onClick={e => { e.stopPropagation(); nav('/crm/pipeline') }}
+                      onClick={e => { e.stopPropagation(); nav(`/crm/pipeline?id=${row._id}`) }}
                       className="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-700 font-medium">
                       Gestionar →
                     </button>

@@ -64,24 +64,34 @@ function ClienteInput({ value, onChange, onSelect }: {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const updatePos = () => {
+    if (!inputRef.current) return
+    const r = inputRef.current.getBoundingClientRect()
+    const above = window.innerHeight - r.bottom < 260 && r.top > 260
+    setPos({ top: above ? r.top - 260 : r.bottom + 2, left: r.left, width: r.width })
+  }
 
   const doSearch = async (q: string) => {
     onChange(q)
     const trimmed = q.trim()
     if (trimmed.length < 1) { setSugs([]); setOpen(false); setSearched(false); return }
-    // Two separate queries — OR with nullable column is unreliable in PostgREST
-    const [{ data: byName }, { data: byNum }] = await Promise.all([
+    updatePos()
+    // Parallel queries: by name and by RFC — more reliable than single OR with nullable cols
+    const [{ data: byName }, { data: byRfc }] = await Promise.all([
       supabase.from('crm_clients')
         .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
         .or(`solicitante.ilike.%${trimmed}%,razon_social.ilike.%${trimmed}%`)
         .limit(10),
       supabase.from('crm_clients')
         .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
-        .or(`rfc.ilike.%${trimmed}%,solicitante.ilike.%${trimmed}%`)
-        .limit(10),
+        .ilike('rfc', `%${trimmed}%`)
+        .limit(5),
     ])
     const seen = new Set<string>()
-    const merged = [...(byName ?? []), ...(byNum ?? [])].filter((r: any) => {
+    const merged = [...(byName ?? []), ...(byRfc ?? [])].filter((r: any) => {
       if (seen.has(r.id)) return false
       seen.add(r.id); return true
     }).slice(0, 10)
@@ -90,39 +100,62 @@ function ClienteInput({ value, onChange, onSelect }: {
 
   return (
     <div className="relative">
-      <input value={value} onChange={e => doSearch(e.target.value)}
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={e => doSearch(e.target.value)}
+        onFocus={() => { if (value.length >= 1 && (sugs.length > 0 || searched)) { updatePos(); setOpen(true) } }}
         onBlur={() => setTimeout(() => setOpen(false), 300)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
-        placeholder="Buscar por nombre, razón social o No. cliente" />
-      {open && (sugs.length > 0 || searched) && (
-        <div className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-full max-h-64 overflow-y-auto mt-0.5">
+        placeholder="Buscar por nombre, razón social o RFC" />
+      {open && (sugs.length > 0 || searched) && createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, width: pos.width,
+          zIndex: 9999, maxHeight: 260, overflowY: 'auto',
+          background: 'white', border: '1px solid #e5e7eb',
+          borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+        }}>
           {sugs.length > 0
-            ? sugs.map(c => (
-                <button key={c.id} type="button"
-                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.rfc ?? '', c); setOpen(false); setSugs([]); setSearched(false) }}
-                  className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-800 truncate">{c.razon_social ?? c.solicitante}</p>
-                    <p className="text-gray-400 text-xs truncate">{c.solicitante}{c.rfc ? ` · ${c.rfc}` : ''}</p>
-                  </div>
+            ? sugs.map(cl => (
+                <button key={cl.id} type="button"
+                  onPointerDown={e => {
+                    e.preventDefault()
+                    onSelect(cl.id, cl.solicitante, cl.razon_social ?? '', cl.rfc ?? '', cl)
+                    setOpen(false); setSugs([]); setSearched(false)
+                  }}
+                  style={{ display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left',
+                    padding: '9px 14px', background: 'transparent', border: 'none',
+                    borderBottom: '1px solid #f3f4f6', cursor: 'pointer', gap: 2 }}
+                  onMouseOver={e => (e.currentTarget.style.background = '#f0fdf4')}
+                  onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>
+                    {cl.razon_social ?? cl.solicitante}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>
+                    {cl.solicitante}{cl.rfc ? ` · RFC: ${cl.rfc}` : ''}
+                  </span>
                 </button>
               ))
             : (
-              <div className="px-3 py-3 text-xs text-gray-500">
-                <p className="mb-2">No se encontró "<strong>{value}</strong>" en el catálogo de clientes.</p>
-                <a
-                  href="/crm/new"
-                  target="_blank"
-                  rel="noreferrer"
+              <div style={{ padding: '12px 14px' }}>
+                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                  No se encontró <strong>"{value}"</strong> en el catálogo.
+                </p>
+                <a href="/crm/new" target="_blank" rel="noreferrer"
                   onMouseDown={e => e.preventDefault()}
-                  className="inline-flex items-center gap-1 bg-teal-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-teal-700">
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: '#0d9488', color: 'white', padding: '6px 12px',
+                    borderRadius: 6, fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
                   + Registrar nuevo cliente
                 </a>
-                <p className="text-gray-400 mt-2 text-xs">Abre en nueva pestaña. Después vuelve aquí y búscalo de nuevo.</p>
+                <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                  Abre en nueva pestaña. Después vuelve y búscalo de nuevo.
+                </p>
               </div>
             )
           }
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -364,7 +397,7 @@ export default function CrmVentaManualPage() {
         }
       } else {
         toast.success('Venta creada')
-        nav('/crm/pipeline')
+        nav(`/crm/pipeline?id=${offer.id}`)
       }
     } catch (e: any) {
       toast.error(`Error: ${e.message}`)
