@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, getCachedUser } from '../../lib/supabase'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
@@ -170,6 +170,7 @@ const emptyRow = () => ({
 
 export default function CrmVentaManualPage() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<'formulario'|'pegar'>('formulario')
   const [clienteInput, setClienteInput] = useState('')
   const [clienteId, setClienteId] = useState('')
@@ -185,6 +186,29 @@ export default function CrmVentaManualPage() {
   const [pastePreview, setPastePreview] = useState<any[]>([])
   const [tipoNegocio, setTipoNegocio] = useState<'venta' | 'donativo'>('venta')
   const [destinatarios, setDestinatarios] = useState<any[]>([])
+
+  // Pre-load client if ?client_id= param is present
+  useEffect(() => {
+    const clientId = searchParams.get('client_id')
+    if (!clientId) return
+    supabase.from('crm_clients')
+      .select('id, solicitante, razon_social, rfc, gpo_vendedores, centro')
+      .eq('id', clientId).single()
+      .then(({ data }) => {
+        if (!data) return
+        setClienteId(data.id)
+        setClienteInfo({ razon: data.razon_social || data.solicitante, noCliente: data.rfc ?? '' })
+        setClienteInput(data.razon_social || data.solicitante)
+        setForm(prev => ({
+          ...prev,
+          gpo_vendedor:  data.gpo_vendedores ?? prev.gpo_vendedor,
+          solicitante:   data.solicitante    ?? prev.solicitante,
+          centro_pedido: data.centro         ?? prev.centro_pedido,
+        }))
+        supabase.from('crm_recipients').select('id, destinatario').eq('client_id', data.id).order('destinatario')
+          .then(({ data: recs }) => setDestinatarios(recs ?? []))
+      })
+  }, [])
 
   const setF = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }))
   const setRow = (i: number, field: string, val: any) =>

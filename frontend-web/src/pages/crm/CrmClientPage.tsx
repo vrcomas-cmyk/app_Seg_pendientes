@@ -195,6 +195,7 @@ export default function CrmClientPage() {
     { key: 'ofertas', label: `Ofertas (${offers.filter(o => (o.crm_offer_items ?? []).some((it: any) => !it.aceptado && it.estatus !== 'rechazado')).length})` },
     { key: 'ventas',        label: `Ventas (${ventas.length})` },
     { key: 'pendientes',    label: `Pendientes (${tasks.length})` },
+    { key: 'pipeline',      label: `Pipeline (${offers.filter(o => !['cancelado','cerrada','facturado'].includes(o.etapa ?? '')).length})` },
   ]
 
   const TIPO_LABEL: Record<string, string> = {
@@ -241,18 +242,22 @@ export default function CrmClientPage() {
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0 flex-wrap">
+            <button onClick={() => nav(`/crm/venta-manual?client_id=${id}`)}
+              className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+              💰 Nueva venta
+            </button>
             <button onClick={() => nav(`/crm/${id}/offer/new?source=manual`)}
-              className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
+              className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
               + Oferta manual
             </button>
-            <Link to={`/crm/${id}/venta`}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-              💰 Ir a venta
-            </Link>
             <Link to={`/crm/${id}/followup/new`}
-              className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+              className="border border-teal-600 text-teal-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-50">
               + Seguimiento
             </Link>
+            <button onClick={() => nav(`/crm/reports?solicitante=${encodeURIComponent(client.solicitante ?? '')}`)}
+              className="border border-gray-200 text-gray-500 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+              SAP ↗
+            </button>
           </div>
         </div>
       </div>
@@ -323,7 +328,8 @@ export default function CrmClientPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.telefonos ?? []).map((t: string) => (
                 <span key={t} className="flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
-                  {t}<button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  <a href={`tel:${t}`} className="hover:text-teal-600 hover:underline">{t}</a>
+                  <button onClick={() => removePhone(t)} className="text-gray-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
               {!(client.telefonos ?? []).length && <span className="text-sm text-gray-400">Sin teléfonos</span>}
@@ -340,7 +346,8 @@ export default function CrmClientPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {(client.correos ?? []).map((e: string) => (
                 <span key={e} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full">
-                  {e}<button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
+                  <a href={`mailto:${e}`} className="hover:underline">{e}</a>
+                  <button onClick={() => removeEmail(e)} className="text-blue-400 hover:text-red-500 ml-1 text-xs">×</button>
                 </span>
               ))}
               {!(client.correos ?? []).length && <span className="text-sm text-gray-400">Sin correos</span>}
@@ -672,6 +679,78 @@ export default function CrmClientPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* TAB: Pipeline — mini seguimiento de este cliente */}
+      {tab === 'pipeline' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <h2 className="font-semibold text-gray-700">Pipeline del cliente</h2>
+            <button onClick={() => nav(`/crm/venta-manual?client_id=${id}`)}
+              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700">
+              + Nueva venta
+            </button>
+          </div>
+          {offers.length === 0 && <p className="text-sm text-gray-400 p-6">Sin registros en pipeline.</p>}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {['Etapa','Tipo','Folio','Materiales','Total','Creado','Acciones'].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {offers.map(offer => {
+                  const items = offer.crm_offer_items ?? []
+                  const total = items.reduce((a: number, i: any) => a + ((i.cantidad_aceptada ?? i.precio_oferta ?? 0) * (i.precio_aceptado ?? 0)), 0)
+                  const etapaColors: Record<string, string> = {
+                    oferta: 'bg-gray-100 text-gray-600', venta: 'bg-blue-100 text-blue-700',
+                    cedis: 'bg-amber-100 text-amber-700', transmision: 'bg-purple-100 text-purple-700',
+                    facturado: 'bg-green-100 text-green-700', cancelado: 'bg-gray-100 text-gray-400',
+                  }
+                  const isArchivado = ['cancelado','cerrada'].includes(offer.etapa ?? '')
+                  return (
+                    <tr key={offer.id}
+                      className={`border-b border-gray-100 hover:bg-gray-50 ${isArchivado ? 'opacity-50' : ''}`}>
+                      <td className="px-3 py-2.5">
+                        <span className={`px-2 py-0.5 rounded-full font-medium text-xs ${etapaColors[offer.etapa ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
+                          {offer.etapa ?? '—'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-500">
+                        {offer.tipo_negocio === 'donativo' ? '🎁 Donativo' : '💰 Venta'}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-blue-700">
+                        {offer.folio_pedido ?? <span className="text-gray-300 italic">sin folio</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600">{items.length}</td>
+                      <td className="px-3 py-2.5 font-semibold text-gray-700">
+                        {total > 0 ? `$${total.toLocaleString('es-MX',{minimumFractionDigits:0})}` : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-400">
+                        {new Date(offer.created_at).toLocaleDateString('es-MX')}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex gap-1">
+                          <button onClick={() => nav(`/crm/pipeline?id=${offer.id}`)}
+                            className="text-xs border border-teal-200 text-teal-600 px-2 py-1 rounded hover:bg-teal-50">
+                            Gestionar →
+                          </button>
+                          <button onClick={() => nav(`/crm/${id}/offer/${offer.id}`)}
+                            className="text-xs border border-gray-200 text-gray-400 px-2 py-1 rounded hover:bg-gray-50">
+                            Editar ↗
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
