@@ -443,34 +443,39 @@ export default function CrmReportsPage() {
         </button>
       </div>
 
+      {/* datalists for autocomplete */}
+      <datalist id="dl-solicitantes">{solicitantes.map(s => <option key={s} value={s} />)}</datalist>
+      <datalist id="dl-fuentes">{fuentes.map(f => <option key={f} value={f} />)}</datalist>
+      <datalist id="dl-centros">{centros.map(c => <option key={c} value={c} />)}</datalist>
+
       {/* Filtros */}
       <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-3 flex flex-wrap gap-2 items-center">
         <input
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 flex-1 min-w-48"
-          placeholder="Buscar en material, descripción, solicitante, destinatario..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+          placeholder="Buscar material, descripción, solicitante..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && ejecutarBusqueda()} />
         <button onClick={ejecutarBusqueda}
           className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
           Buscar
         </button>
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
-          value={solicitante} onChange={e => setSolicitante(e.target.value)}>
-          <option value="">Todos los solicitantes</option>
-          {solicitantes.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {solicitantes.length > 0 && (
+          <input list="dl-solicitantes"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 min-w-40"
+            placeholder="Solicitante..."
+            value={solicitante} onChange={e => setSolicitante(e.target.value)} />
+        )}
         {fuentes.length > 0 && (
-          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
-            value={fuente} onChange={e => setFuente(e.target.value)}>
-            <option value="">Todas las fuentes</option>
-            {fuentes.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+          <input list="dl-fuentes"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 min-w-32"
+            placeholder="Fuente..."
+            value={fuente} onChange={e => setFuente(e.target.value)} />
         )}
         {centros.length > 0 && (
-          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
-            value={centro} onChange={e => setCentro(e.target.value)}>
-            <option value="">Todos los centros</option>
-            {centros.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <input list="dl-centros"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 min-w-28"
+            placeholder="Centro..."
+            value={centro} onChange={e => setCentro(e.target.value)} />
         )}
         <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap">
           <input type="checkbox" checked={soloDisponibles}

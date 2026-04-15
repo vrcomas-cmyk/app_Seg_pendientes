@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 
 function MaterialInput({ value, onChange, onSelect }: {
   value: string; onChange: (v: string) => void
-  onSelect: (m: string, d: string, um: string) => void
+  onSelect: (m: string, d: string, um: string, precio: string) => void
 }) {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
@@ -24,7 +24,7 @@ function MaterialInput({ value, onChange, onSelect }: {
     onChange(q)
     if (q.length < 2) { setSugs([]); setOpen(false); return }
     const { data } = await supabase.from('catalog_materials')
-      .select('material, descripcion, um').ilike('material', `%${q}%`).limit(10)
+      .select('material, descripcion, um, precio_unitario').ilike('material', `%${q}%`).limit(10)
     setSugs(data ?? []); updatePos(); setOpen(true)
   }
 
@@ -41,7 +41,7 @@ function MaterialInput({ value, onChange, onSelect }: {
           borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
           {sugs.map(s => (
             <button key={s.material} type="button"
-              onMouseDown={() => { onSelect(s.material, s.descripcion ?? '', s.um ?? ''); setOpen(false) }}
+              onMouseDown={() => { onSelect(s.material, s.descripcion ?? '', s.um ?? '', String(s.precio_unitario ?? '')); setOpen(false) }}
               style={{ display: 'flex', gap: 8, width: '100%', textAlign: 'left', padding: '7px 12px',
                 fontSize: 12, background: 'transparent', border: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}
               onMouseOver={e => (e.currentTarget.style.background = '#f0fdf4')}
@@ -63,35 +63,34 @@ function ClienteInput({ value, onChange, onSelect }: {
 }) {
   const [sugs, setSugs] = useState<any[]>([])
   const [open, setOpen] = useState(false)
-
-
-
   const [searched, setSearched] = useState(false)
 
-  const searchWithFlag = async (q: string) => {
+  const doSearch = async (q: string) => {
     onChange(q)
-    if (q.length < 2) { setSugs([]); setOpen(false); setSearched(false); return }
-    // Search by name/razon_social first — no_cliente can be null and pollutes OR results
-    const { data: byName } = await supabase.from('crm_clients')
-      .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
-      .or(`solicitante.ilike.%${q}%,razon_social.ilike.%${q}%`)
-      .limit(8)
-    let results = byName ?? []
-    // If looks like a client number (digits), also search by no_cliente
-    if (results.length < 8 && /\d/.test(q)) {
-      const { data: byNum } = await supabase.from('crm_clients')
+    const trimmed = q.trim()
+    if (trimmed.length < 1) { setSugs([]); setOpen(false); setSearched(false); return }
+    // Two separate queries — OR with nullable column is unreliable in PostgREST
+    const [{ data: byName }, { data: byNum }] = await Promise.all([
+      supabase.from('crm_clients')
         .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
-        .ilike('no_cliente', `%${q}%`)
-        .limit(8 - results.length)
-      const existing = new Set(results.map((r: any) => r.id))
-      results = [...results, ...(byNum ?? []).filter((r: any) => !existing.has(r.id))]
-    }
-    setSugs(results); setSearched(true); setOpen(true)
+        .or(`solicitante.ilike.%${trimmed}%,razon_social.ilike.%${trimmed}%`)
+        .limit(10),
+      supabase.from('crm_clients')
+        .select('id, solicitante, razon_social, no_cliente, gpo_cliente, gpo_vendedor, centro')
+        .ilike('no_cliente', `%${trimmed}%`)
+        .limit(10),
+    ])
+    const seen = new Set<string>()
+    const merged = [...(byName ?? []), ...(byNum ?? [])].filter((r: any) => {
+      if (seen.has(r.id)) return false
+      seen.add(r.id); return true
+    }).slice(0, 10)
+    setSugs(merged); setSearched(true); setOpen(true)
   }
 
   return (
     <div className="relative">
-      <input value={value} onChange={e => searchWithFlag(e.target.value)}
+      <input value={value} onChange={e => doSearch(e.target.value)}
         onBlur={() => setTimeout(() => setOpen(false), 300)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
         placeholder="Buscar por nombre, razón social o No. cliente" />
@@ -100,7 +99,7 @@ function ClienteInput({ value, onChange, onSelect }: {
           {sugs.length > 0
             ? sugs.map(c => (
                 <button key={c.id} type="button"
-                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSearched(false) }}
+                  onPointerDown={e => { e.preventDefault(); onSelect(c.id, c.solicitante, c.razon_social ?? '', c.no_cliente ?? '', c); setOpen(false); setSugs([]); setSearched(false) }}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
                   {c.no_cliente && <span className="font-mono text-gray-400 flex-shrink-0">{c.no_cliente}</span>}
                   <div className="min-w-0">
@@ -297,7 +296,7 @@ export default function CrmVentaManualPage() {
         client_id:      clienteId,
         tipo:           'manual',
         tipo_negocio:   tipoNegocio,
-        etapa:          tipoNegocio === 'donativo' ? 'donativo' : 'venta',
+        etapa:          'oferta', // donativo starts as oferta; tipo_negocio distinguishes it
         estatus:        'borrador',
         notas:          form.notas || null,
         fecha_venta:    form.fecha,
@@ -574,7 +573,12 @@ export default function CrmVentaManualPage() {
                     <tr key={i} className={`border-b border-gray-100 ${r.condicion_especial ? 'bg-amber-50' : ''}`}>
                       <td className="px-1 py-1 w-32">
                         <MaterialInput value={r.material} onChange={v => setRow(i, 'material', v)}
-                          onSelect={(m, d, um) => { setRow(i,'material',m); setRow(i,'descripcion',d); if(um) setRow(i,'um',um) }} />
+                          onSelect={(m, d, um, precio) => {
+                            setRow(i,'material',m)
+                            setRow(i,'descripcion',d)
+                            if (um) setRow(i,'um',um)
+                            if (precio) setRow(i,'precio',precio)
+                          }} />
                       </td>
                       <td className="px-1 py-1 w-48">
                         <input className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs outline-none focus:border-teal-400"
