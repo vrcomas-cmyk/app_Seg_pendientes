@@ -342,28 +342,33 @@ export default function CrmVentaManualPage() {
 
       if (error || !offer) throw new Error(error?.message ?? 'Error')
 
-      await supabase.from('crm_offer_items').insert(
+      const { error: itemsError } = await supabase.from('crm_offer_items').insert(
         validRows.map(r => ({
           offer_id:           offer.id,
+          source_type:        'manual',
           material:           r.material,
           descripcion:        r.descripcion || null,
+          cantidad_ofertada:  parseFloat(r.cantidad_aceptada || r.cantidad_pedida) || 0,
           cantidad_aceptada:  parseFloat(r.cantidad_aceptada || r.cantidad_pedida) || 0,
+          precio_oferta:      parseFloat(cleanMoney(r.precio)) || 0,
+          precio_aceptado:    parseFloat(cleanMoney(r.precio)) || 0,
           cantidad_pendiente: parseFloat(r.cantidad_pendiente) || null,
-          precio_aceptado:    parseFloat(r.precio) || 0,
           um:                 r.um || null,
           consumo_promedio:   parseFloat(r.consumo_promedio) || null,
           fuente:             r.fuente || null,
           disponible:         parseFloat(r.disponible) || null,
           lote:               r.lote || null,
           caducidad:          toIsoDate(r.caducidad) || null,
-          condicion_especial: r.condicion_especial,
+          condicion_especial: r.condicion_especial ?? false,
           centro:             r.centro || null,
           almacen:            r.almacen || null,
           aceptado:           true,
-          estatus:            'borrador',
+          estatus:            'aceptado',
           numero_pedido:      form.folio_pedido || null,
         }))
       )
+      if (itemsError) throw new Error(`Error al guardar materiales: ${itemsError.message}`)
+
       if (tipoNegocio === 'donativo') {
         // Crear solicitud MSC vinculada al donativo
         const { data: mscSol } = await supabase.from('msc_solicitudes').insert({

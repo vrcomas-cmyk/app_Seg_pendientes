@@ -79,9 +79,8 @@ export default function CrmPipelinePage() {
         client_id, folio_pedido, gpo_cliente, gpo_vendedor,
         crm_clients(id, solicitante, razon_social),
         crm_offer_items(id, material, descripcion, cantidad_aceptada, precio_aceptado,
-          numero_factura, estatus, lote, caducidad, um, cedis_request_id,
-          crm_cedis_requests(id, estatus, centro_origen, almacen_origen,
-            centro_destino, almacen_destino, cantidad_pedida, cantidad, created_at))
+          cantidad_ofertada, precio_oferta,
+          numero_factura, estatus, lote, caducidad, um, cedis_request_id)
       `)
       .order('created_at', { ascending: false })
     setVentas(data ?? [])
@@ -345,7 +344,7 @@ export default function CrmPipelinePage() {
           const dias     = diasDesdeVenta(v.fecha_venta)
           const tieneAlerta = dias >= 7 && !['facturado','cancelado'].includes(v.etapa)
           const items    = v.crm_offer_items ?? []
-          const total    = items.reduce((a: number, i: any) => a + ((i.cantidad_aceptada ?? 0) * (i.precio_aceptado ?? 0)), 0)
+          const total    = items.reduce((a: number, i: any) => a + ((i.cantidad_aceptada ?? i.cantidad_ofertada ?? 0) * (i.precio_aceptado ?? i.precio_oferta ?? 0)), 0)
           const isExpanded = expandedId === v.id
           const esOferta = v.etapa === 'oferta'
           const esDonativo = v.tipo_negocio === 'donativo'
@@ -465,9 +464,9 @@ export default function CrmPipelinePage() {
                           <tr key={item.id} className="border-b border-gray-100 last:border-0">
                             <td className="px-2 py-1.5 font-mono font-semibold text-gray-800">{item.material}</td>
                             <td className="px-2 py-1.5 text-gray-600 max-w-48 truncate">{item.descripcion}</td>
-                            <td className="px-2 py-1.5 text-right">{item.cantidad_aceptada}</td>
+                            <td className="px-2 py-1.5 text-right">{item.cantidad_aceptada ?? item.cantidad_ofertada}</td>
                             <td className="px-2 py-1.5 text-right">
-                              {item.precio_aceptado ? `$${Number(item.precio_aceptado).toLocaleString('es-MX',{minimumFractionDigits:2})}` : '—'}
+                              {(item.precio_aceptado ?? item.precio_oferta) ? `$${Number(item.precio_aceptado ?? item.precio_oferta).toLocaleString('es-MX',{minimumFractionDigits:2})}` : '—'}
                             </td>
                             <td className="px-2 py-1.5">{item.um}</td>
                             <td className="px-2 py-1.5 whitespace-nowrap">
@@ -488,46 +487,17 @@ export default function CrmPipelinePage() {
                     <p className="text-xs text-gray-500 mt-2 italic">📝 {v.notas}</p>
                   )}
 
-                  {/* CEDIS vinculadas a esta oferta */}
-                  {(() => {
-                    const itemsConCedis = items.filter((i: any) => i.crm_cedis_requests)
-                    if (itemsConCedis.length === 0) return null
-                    return (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                          📦 Solicitudes CEDIS
-                        </p>
-                        <div className="space-y-1.5">
-                          {itemsConCedis.map((item: any) => {
-                            const req = item.crm_cedis_requests
-                            const etapaCedis = {
-                              pendiente_solicitar: { label: 'Pendiente solicitar', color: 'bg-gray-100 text-gray-600' },
-                              solicitado:          { label: 'Solicitado',          color: 'bg-blue-100 text-blue-700' },
-                              en_transito:         { label: 'En tránsito',         color: 'bg-amber-100 text-amber-700' },
-                              recibido:            { label: 'Recibido',            color: 'bg-green-100 text-green-700' },
-                              cancelado:           { label: 'Cancelado',           color: 'bg-gray-100 text-gray-400' },
-                            }[req.estatus] ?? { label: req.estatus, color: 'bg-gray-100 text-gray-500' }
-                            return (
-                              <div key={req.id} className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs">
-                                <span className="font-mono font-semibold text-gray-800">{item.material}</span>
-                                <span className="text-gray-400">·</span>
-                                <span className="text-gray-600">{req.centro_origen} → {req.centro_destino}</span>
-                                <span className="text-gray-400">·</span>
-                                <span className={`px-2 py-0.5 rounded-full font-medium ${etapaCedis.color}`}>
-                                  {etapaCedis.label}
-                                </span>
-                                <button
-                                  onClick={e => { e.stopPropagation(); nav('/cedis') }}
-                                  className="ml-auto text-xs text-amber-600 hover:underline flex-shrink-0">
-                                  Ver en CEDIS →
-                                </button>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })()}
+                  {/* CEDIS — link to module if any item has cedis_request_id */}
+                  {items.some((i: any) => i.cedis_request_id) && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2">
+                      <span className="text-xs text-amber-600 font-semibold">📦 Solicitudes CEDIS activas</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); nav('/cedis') }}
+                        className="text-xs text-amber-600 hover:underline border border-amber-200 px-2 py-0.5 rounded-lg hover:bg-amber-50">
+                        Ver en módulo CEDIS →
+                      </button>
+                    </div>
+                  )}
 
                   {/* Cerrar / Cancelar */}
                   {!['facturado','cancelado','cerrada'].includes(v.estatus ?? '') && (
