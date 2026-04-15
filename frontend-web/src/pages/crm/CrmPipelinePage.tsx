@@ -325,7 +325,7 @@ export default function CrmPipelinePage() {
 
     const updates: Record<string,any> = {}
     for (const it of accepted) {
-      const ci = confirmItems[it.id] ?? {}
+      const ci = confirmItems[it.id] ?? {} as any
       updates[it.id] = {
         aceptado: true, estatus: 'aceptado',
         cantidad_aceptada: parseFloat(ci.cantidad) || it.cantidad_aceptada || it.cantidad_ofertada || 0,
@@ -346,7 +346,7 @@ export default function CrmPipelinePage() {
 
     // CEDIS requests
     for (const it of accepted) {
-      const ci = confirmItems[it.id] ?? {}
+      const ci = confirmItems[it.id] ?? {} as any
       if (ci.requiereCedis && ci.cedisOrigen && ci.cedisDestino) {
         const { data: req } = await supabase.from('crm_cedis_requests').insert({
           codigo: it.material, descripcion: it.descripcion,
