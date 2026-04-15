@@ -54,7 +54,23 @@ export default function TaskListPage() {
       .select('*')
       .eq('created_by', user.id)
       .order('due_date', { ascending: true })
-    setTasks(data ?? [])
+
+    // Enrich with CRM offer data for badge display
+    const taskList = data ?? []
+    if (taskList.length > 0) {
+      const taskIds = taskList.map((t: any) => t.id)
+      const { data: offers } = await supabase
+        .from('crm_offers')
+        .select('task_id, id, etapa, crm_clients(solicitante, razon_social)')
+        .in('task_id', taskIds)
+      if (offers && offers.length > 0) {
+        const offerMap: Record<string, any> = {}
+        offers.forEach((o: any) => { if (o.task_id) offerMap[o.task_id] = o })
+        setTasks(taskList.map((t: any) => offerMap[t.id] ? { ...t, _crm_offer: offerMap[t.id] } : t))
+        setLoading(false); return
+      }
+    }
+    setTasks(taskList)
     setLoading(false)
   }, [])
 
@@ -159,7 +175,14 @@ export default function TaskListPage() {
                   className="flex items-center gap-3 bg-white rounded-lg px-4 py-2.5 border border-amber-100 hover:border-amber-300 hover:shadow-sm transition">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
-                    <p className="text-xs text-gray-400">{t.requested_by}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {t._crm_offer && (
+                        <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded-full font-medium">
+                          📋 {t._crm_offer.crm_clients?.razon_social ?? t._crm_offer.crm_clients?.solicitante}
+                        </span>
+                      )}
+                      {t.requested_by && <span className="text-xs text-gray-400">{t.requested_by}</span>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLOR[t.priority]}`}>

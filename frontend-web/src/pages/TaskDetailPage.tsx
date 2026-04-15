@@ -33,6 +33,7 @@ export default function TaskDetailPage() {
   const [calEvents, setCalEvents] = useState<any[]>([])
   const [attachments, setAttachments] = useState<any[]>([])
   const [crmFollowup, setCrmFollowup] = useState<any>(null)
+  const [crmOffer, setCrmOffer] = useState<any>(null)
   const [reviewedWith, setReviewedWith] = useState('')
   const [loading, setLoading] = useState(false)
   const [calMode, setCalMode] = useState<'none'|'create'|'reschedule'>('none')
@@ -73,6 +74,14 @@ export default function TaskDetailPage() {
       .from('crm_followups').select('*, crm_clients(id, solicitante)')
       .eq('task_id', id).single()
     setCrmFollowup(followup)
+
+    const { data: offer } = await supabase
+      .from('crm_offers')
+      .select(`id, etapa, folio_pedido, tipo_negocio, fecha_venta, client_id,
+        crm_clients(id, solicitante, razon_social),
+        crm_offer_items(id, material, descripcion, cantidad_aceptada, cantidad_ofertada, precio_aceptado, precio_oferta)`)
+      .eq('task_id', id).single()
+    if (offer) setCrmOffer(offer)
   }
 
   useEffect(() => { load() }, [id])
@@ -212,6 +221,57 @@ export default function TaskDetailPage() {
           </Link>
         </div>
       )}
+
+      {crmOffer && (() => {
+        const cli = crmOffer.crm_clients
+        const items = crmOffer.crm_offer_items ?? []
+        const total = items.reduce((a: number, i: any) =>
+          a + ((i.cantidad_aceptada??i.cantidad_ofertada??0)*(i.precio_aceptado??i.precio_oferta??0)), 0)
+        const ETAPA_COLORS: Record<string,string> = {
+          oferta:'bg-gray-100 text-gray-600', venta:'bg-blue-100 text-blue-700',
+          cedis:'bg-amber-100 text-amber-700', transmision:'bg-purple-100 text-purple-700',
+          facturado:'bg-green-100 text-green-700', cancelado:'bg-gray-100 text-gray-400',
+        }
+        return (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">📋 Oferta CRM vinculada</p>
+                <p className="text-sm font-bold text-gray-800">{cli?.razon_social ?? cli?.solicitante ?? '—'}</p>
+                <div className="flex flex-wrap gap-2 mt-1.5 items-center">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ETAPA_COLORS[crmOffer.etapa]??'bg-gray-100 text-gray-500'}`}>
+                    {crmOffer.etapa}
+                  </span>
+                  {crmOffer.folio_pedido && (
+                    <span className="text-xs font-mono text-blue-700 font-semibold">{crmOffer.folio_pedido}</span>
+                  )}
+                  <span className="text-xs text-gray-400">{items.length} material(es)</span>
+                  {total > 0 && (
+                    <span className="text-xs font-semibold text-gray-700">
+                      ${total.toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+                    </span>
+                  )}
+                </div>
+                {items.length > 0 && (
+                  <div className="mt-2 space-y-0.5">
+                    {items.slice(0, 3).map((i: any) => (
+                      <p key={i.id} className="text-xs text-gray-500">
+                        <span className="font-mono font-semibold">{i.material}</span>
+                        {i.descripcion ? ` — ${i.descripcion}` : ''}
+                      </p>
+                    ))}
+                    {items.length > 3 && <p className="text-xs text-gray-400 mt-0.5">+{items.length - 3} más</p>}
+                  </div>
+                )}
+              </div>
+              <Link to={`/crm/pipeline?id=${crmOffer.id}`}
+                className="text-xs bg-blue-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-blue-700 flex-shrink-0 min-h-[36px] flex items-center whitespace-nowrap">
+                Ver Pipeline →
+              </Link>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Layout: una columna en mobile, dos en desktop */}
       <div className="flex flex-col lg:flex-row gap-4">

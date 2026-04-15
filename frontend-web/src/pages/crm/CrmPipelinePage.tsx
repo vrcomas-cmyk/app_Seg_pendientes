@@ -94,6 +94,11 @@ export default function CrmPipelinePage() {
   const [archiveMotivo, setArchiveMotivo] = useState('')
   const [savingArchive, setSavingArchive] = useState(false)
 
+  // Task panel per offer
+  const [taskPanelOpen, setTaskPanelOpen] = useState<Record<string,boolean>>({})
+  const [taskForm, setTaskForm] = useState<Record<string,any>>({})
+  const [savingTask, setSavingTask] = useState<Record<string,boolean>>({})
+
   // Folio modal (oferta→venta)
   const [folioModal, setFolioModal] = useState<{ venta:any }|null>(null)
   const [savingFolio, setSavingFolio] = useState(false)
@@ -105,6 +110,7 @@ export default function CrmPipelinePage() {
       .from('crm_offers')
       .select(`
         id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta,
+        id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta, task_id,
         client_id, folio_pedido, gpo_cliente, gpo_vendedor,
         crm_clients(id, solicitante, razon_social),
         crm_offer_items(
@@ -125,6 +131,18 @@ export default function CrmPipelinePage() {
     if (highlightId && highlightRef.current)
       setTimeout(() => highlightRef.current?.scrollIntoView({ behavior:'smooth', block:'center' }), 300)
   }, [loading, highlightId])
+
+  // Fetch task details when an offer with task_id is expanded
+  useEffect(() => {
+    if (!expandedId) return
+    const offer = ventas.find(v => v.id === expandedId)
+    if (!offer?.task_id || offer._task) return
+    supabase.from('tasks').select('id, title, description, priority, due_date, status')
+      .eq('id', offer.task_id).single()
+      .then(({ data }) => {
+        if (data) setVentas(p => p.map(v => v.id === expandedId ? { ...v, _task: data } : v))
+      })
+  }, [expandedId, ventas])
 
   // ── Visible filter ─────────────────────────────────────────────────────────
   const visible = ventas.filter(v => {
@@ -373,6 +391,36 @@ export default function CrmPipelinePage() {
     setConfirmModal(null)
     setSavingConfirm(false)
     load()
+  }
+
+  // ── Create & link task to offer ─────────────────────────────────────────────
+  const createAndLinkTask = async (offerId: string, clientName: string) => {
+    const form = taskForm[offerId] ?? {}
+    if (!form.title?.trim()) return toast.error('Escribe el título del pendiente')
+    setSavingTask(p => ({ ...p, [offerId]: true }))
+    const user = await getCachedUser()
+    const { data: task, error } = await supabase.from('tasks').insert({
+      title:        form.title.trim(),
+      description:  form.description?.trim() || `Oferta CRM — ${clientName}`,
+      priority:     form.priority || 'media',
+      due_date:     form.due_date || null,
+      requested_by: clientName,
+      created_by:   user?.id,
+    }).select().single()
+    if (error || !task) { toast.error(error?.message ?? 'Error'); setSavingTask(p => ({ ...p, [offerId]: false })); return }
+    const { error: e2 } = await supabase.from('crm_offers').update({ task_id: task.id }).eq('id', offerId)
+    if (e2) { toast.error(e2.message); setSavingTask(p => ({ ...p, [offerId]: false })); return }
+    setVentas(p => p.map(v => v.id === offerId ? { ...v, task_id: task.id, _task: task } : v))
+    setTaskPanelOpen(p => ({ ...p, [offerId]: false }))
+    setTaskForm(p => ({ ...p, [offerId]: {} }))
+    toast.success('Pendiente creado y vinculado')
+    setSavingTask(p => ({ ...p, [offerId]: false }))
+  }
+
+  const completeTask = async (offerId: string, taskId: string) => {
+    await supabase.from('tasks').update({ status: 'completado' }).eq('id', taskId)
+    setVentas(p => p.map(v => v.id === offerId ? { ...v, _task: { ...v._task, status: 'completado' } } : v))
+    toast.success('Pendiente completado')
   }
 
   // ── Folio modal (oferta avanzar rápido) ───────────────────────────────────
@@ -722,6 +770,141 @@ export default function CrmPipelinePage() {
                             )}
 
                             {v.notas && <p className="text-xs text-gray-500 mt-2 italic">📝 {v.notas}</p>}
+
+                            {/* ── Pendiente vinculado ────────────────────── */}
+                            {!archivada && (() => {
+                              const task = v._task
+                              const panelOpen = taskPanelOpen[v.id] ?? false
+                              const tf = taskForm[v.id] ?? {}
+                              const clientName = v.crm_clients?.razon_social ?? v.crm_clients?.solicitante ?? ''
+                              const taskPending = task && task.status !== 'completado'
+
+                              return (
+                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                  {/* Header */}
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                                      📌 Pendiente vinculado
+                                      {taskPending && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">⚠ Sin completar</span>}
+                                    </p>
+                                    {!v.task_id && !panelOpen && (
+                                      <button onClick={() => setTaskPanelOpen(p=>({...p,[v.id]:true}))}
+                                        className="text-xs border border-gray-200 text-gray-500 px-2.5 py-1 rounded-lg hover:bg-gray-100 font-medium">
+                                        + Crear pendiente
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Existing task */}
+                                  {v.task_id && task && (
+                                    <div className={`rounded-xl border px-3 py-2.5 flex items-start justify-between gap-3 ${
+                                      taskPending ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'
+                                    }`}>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-semibold ${taskPending ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                          {task.title}
+                                        </p>
+                                        {task.description && (
+                                          <p className="text-xs text-gray-500 mt-0.5 truncate">{task.description}</p>
+                                        )}
+                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                            task.priority === 'alta' ? 'bg-red-100 text-red-600' :
+                                            task.priority === 'media' ? 'bg-yellow-100 text-yellow-700' :
+                                            'bg-gray-100 text-gray-500'
+                                          }`}>{task.priority}</span>
+                                          {task.due_date && (
+                                            <span className="text-xs text-gray-400">Vence: {task.due_date}</span>
+                                          )}
+                                          {task.status === 'completado' && (
+                                            <span className="text-xs text-green-600 font-medium">✓ Completado</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-1 flex-shrink-0">
+                                        {taskPending && (
+                                          <button onClick={() => completeTask(v.id, task.id)}
+                                            className="text-xs bg-green-600 text-white px-2 py-1 rounded-lg hover:bg-green-700 font-medium whitespace-nowrap">
+                                            ✓ Completar
+                                          </button>
+                                        )}
+                                        <button onClick={() => nav(`/tasks/${task.id}`)}
+                                          className="text-xs border border-gray-200 text-gray-500 px-2 py-1 rounded-lg hover:bg-gray-50">
+                                          Ver →
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Loading task */}
+                                  {v.task_id && !task && (
+                                    <p className="text-xs text-gray-400">Cargando pendiente...</p>
+                                  )}
+
+                                  {/* No task yet */}
+                                  {!v.task_id && !panelOpen && (
+                                    <p className="text-xs text-gray-400 italic">Sin pendiente vinculado.</p>
+                                  )}
+
+                                  {/* Create form */}
+                                  {panelOpen && !v.task_id && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+                                      <div>
+                                        <label className="text-xs text-gray-500 block mb-0.5">Título *</label>
+                                        <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 bg-white"
+                                          placeholder="Ej: Mandar carta canje al cliente"
+                                          value={tf.title ?? ''}
+                                          onChange={e=>setTaskForm(p=>({...p,[v.id]:{...tf,title:e.target.value}}))} />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <label className="text-xs text-gray-500 block mb-0.5">Prioridad</label>
+                                          <select className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none bg-white"
+                                            value={tf.priority ?? 'media'}
+                                            onChange={e=>setTaskForm(p=>({...p,[v.id]:{...tf,priority:e.target.value}}))}>
+                                            <option value="alta">Alta</option>
+                                            <option value="media">Media</option>
+                                            <option value="baja">Baja</option>
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <label className="text-xs text-gray-500 block mb-0.5">Fecha límite</label>
+                                          <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
+                                            value={tf.due_date ?? ''}
+                                            onChange={e=>setTaskForm(p=>({...p,[v.id]:{...tf,due_date:e.target.value}}))} />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="text-xs text-gray-500 block mb-0.5">Descripción (opcional)</label>
+                                        <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
+                                          placeholder="Detalles del pendiente..."
+                                          value={tf.description ?? ''}
+                                          onChange={e=>setTaskForm(p=>({...p,[v.id]:{...tf,description:e.target.value}}))} />
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button onClick={() => createAndLinkTask(v.id, clientName)}
+                                          disabled={savingTask[v.id]}
+                                          className="text-xs bg-teal-600 text-white px-4 py-1.5 rounded-lg hover:bg-teal-700 disabled:opacity-50 font-medium">
+                                          {savingTask[v.id] ? 'Guardando...' : '📌 Crear y vincular'}
+                                        </button>
+                                        <button onClick={() => setTaskPanelOpen(p=>({...p,[v.id]:false}))}
+                                          className="text-xs border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-100">
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Warning on facturar if pending task */}
+                                  {taskPending && (
+                                    <div className="mt-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 text-xs text-orange-700 flex items-center gap-1.5">
+                                      ⚠ Completa el pendiente antes de facturar, o factura de todas formas.
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
+
                           </div>
                         </td>
                       </tr>
