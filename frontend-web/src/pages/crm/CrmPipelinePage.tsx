@@ -599,7 +599,7 @@ export default function CrmPipelinePage() {
                 <tbody>
                   {confirmModal.items.map((item: any) => {
                     const ci = confirmItems[item.id] ?? { aceptado: true, cantidad: '', lote: '', caducidad: '', comentario: '' }
-                    return (
+                    return (<>
                       <tr key={item.id} className={`border-b border-gray-100 ${!ci.aceptado ? 'opacity-50 bg-red-50' : ''}`}>
                         <td className="px-2 py-2">
                           <button
@@ -681,7 +681,7 @@ export default function CrmPipelinePage() {
                           </td>
                         </tr>
                       )}
-                    )
+                    </>)
                   })}
                 </tbody>
               </table>

@@ -459,22 +459,14 @@ export default function CrmReportsPage() {
           {solicitantes.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         {fuentes.length > 0 && (
-          <button onClick={ejecutarBusqueda}
-          className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
-          Buscar
-        </button>
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
+          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
             value={fuente} onChange={e => setFuente(e.target.value)}>
             <option value="">Todas las fuentes</option>
             {fuentes.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         )}
         {centros.length > 0 && (
-          <button onClick={ejecutarBusqueda}
-          className="bg-teal-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-700 flex-shrink-0">
-          Buscar
-        </button>
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
+          <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none bg-white"
             value={centro} onChange={e => setCentro(e.target.value)}>
             <option value="">Todos los centros</option>
             {centros.map(c => <option key={c} value={c}>{c}</option>)}
