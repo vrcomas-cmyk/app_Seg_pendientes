@@ -6,7 +6,7 @@ import ContactsTable from '../../components/ContactsTable'
 import SugFilters from '../../components/SugFilters'
 import toast from 'react-hot-toast'
 
-type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'ventas' | 'pendientes' | 'pipeline'
+type Tab = 'info' | 'destinatarios' | 'contactos' | 'seguimientos' | 'sugerencias' | 'consumo' | 'ofertas' | 'ventas' | 'pendientes' | 'pipeline' | 'inventario'
 
 export default function CrmClientPage() {
   const { id } = useParams()
@@ -18,6 +18,13 @@ export default function CrmClientPage() {
   const [followups, setFollowups] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
   const [suggestions, setSuggestions] = useState<any[]>([])
+  const [inventory, setInventory] = useState<any[]>([])
+  const [invLoading, setInvLoading] = useState(false)
+  const [invSearch, setInvSearch] = useState('')
+  const [noOfertar, setNoOfertar] = useState<any[]>([])
+  const [noOfertarModal, setNoOfertarModal] = useState<{ material: string; descripcion?: string; source?: any } | null>(null)
+  const [noOfertarForm, setNoOfertarForm] = useState({ motivo: '', condicion: '', meses_caducidad_min: '' })
+  const [savingNoOfertar, setSavingNoOfertar] = useState(false)
   const [consumption, setConsumption] = useState<any[]>([])
   const [offers, setOffers] = useState<any[]>([])
   const [ventas, setVentas] = useState<any[]>([])
@@ -76,11 +83,14 @@ export default function CrmClientPage() {
           .order('created_at', { ascending: false }),
       ])
 
-      const [acceptedRes, rejectedRes, offeredRes] = await Promise.all([
+      const [acceptedRes, rejectedRes, offeredRes, noOfertarRes] = await Promise.all([
         supabase.from('crm_accepted_suggestions').select('numero_pedido, material'),
         supabase.from('crm_rejected_suggestions').select('numero_pedido, material'),
         supabase.from('crm_offered_suggestions').select('source_id'),
+        supabase.from('crm_no_ofertar').select('*').eq('client_id', id).eq('activo', true),
       ])
+      setNoOfertar(noOfertarRes.data ?? [])
+      const noOfertarMaterials = new Set((noOfertarRes.data ?? []).map((n: any) => n.material))
       const acceptedSet = new Set(
         (acceptedRes.data ?? []).map((a: any) => `${a.numero_pedido}__${a.material}`)
       )
@@ -108,6 +118,9 @@ export default function CrmClientPage() {
         // En oferta activa → ocultar todas las filas del mismo pedido+material
         if (offeredKeys.has(`${s.pedido}__${s.material_sugerido}`)) return false
         if (offeredKeys.has(`${s.pedido}__${s.material_solicitado}`)) return false
+        // Registro activo en "no ofertar" para este cliente → ocultar
+        if (noOfertarMaterials.has(s.material_sugerido)) return false
+        if (noOfertarMaterials.has(s.material_solicitado)) return false
         return true
       })
       setSuggestions(filteredSug)
@@ -126,6 +139,54 @@ export default function CrmClientPage() {
   }
 
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    if (tab === 'inventario' && inventory.length === 0 && !invLoading) loadInventory()
+  }, [tab])
+
+  // ── Inventory load on demand ──────────────────────────────────────────────
+  const loadInventory = async () => {
+    setInvLoading(true)
+    const { data } = await supabase.from('crm_inventory')
+      .select('*').order('material', { ascending: true }).limit(2000)
+    setInventory(data ?? [])
+    setInvLoading(false)
+  }
+
+  // ── No ofertar: save & remove ─────────────────────────────────────────────
+  const saveNoOfertar = async () => {
+    if (!noOfertarModal) return
+    if (!noOfertarForm.motivo.trim() && !noOfertarForm.condicion.trim()) {
+      return toast.error('Escribe al menos un motivo o condición')
+    }
+    setSavingNoOfertar(true)
+    const user = await getCachedUser()
+    const { error } = await supabase.from('crm_no_ofertar').insert({
+      client_id: id,
+      material: noOfertarModal.material,
+      condicion: noOfertarForm.condicion.trim() || null,
+      motivo: noOfertarForm.motivo.trim() || null,
+      meses_caducidad_min: noOfertarForm.meses_caducidad_min
+        ? parseInt(noOfertarForm.meses_caducidad_min) : null,
+      activo: true,
+      created_by: user?.id,
+    })
+    if (error) { toast.error(error.message); setSavingNoOfertar(false); return }
+    toast.success(`Material ${noOfertarModal.material} marcado como "no volver a ofertar"`)
+    setNoOfertarModal(null)
+    setNoOfertarForm({ motivo: '', condicion: '', meses_caducidad_min: '' })
+    setSavingNoOfertar(false)
+    load()
+  }
+
+  const removeNoOfertar = async (rowId: string) => {
+    if (!confirm('¿Eliminar esta restricción? El material volverá a aparecer en sugerencias.')) return
+    const { error } = await supabase.from('crm_no_ofertar')
+      .update({ activo: false }).eq('id', rowId)
+    if (error) { toast.error(error.message); return }
+    toast.success('Restricción eliminada')
+    load()
+  }
 
   const saveClient = async () => {
     const { error } = await supabase.from('crm_clients').update({
@@ -187,6 +248,7 @@ export default function CrmClientPage() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'info',          label: 'Info general' },
+    { key: 'inventario',    label: `📦 Inventario` },
     { key: 'destinatarios', label: `Destinatarios (${recipients.length})` },
     { key: 'contactos',     label: `Contactos (${contacts.length})` },
     { key: 'seguimientos',  label: `Seguimientos (${followups.length})` },
@@ -377,6 +439,149 @@ export default function CrmClientPage() {
       )}
 
       {/* TAB: Destinatarios */}
+      {/* TAB: Inventario disponible (para consultas durante llamadas) */}
+      {tab === 'inventario' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="font-semibold text-gray-700">📦 Inventario disponible</h2>
+              <p className="text-xs text-gray-400">
+                {inventory.length > 0 && `${inventory.length} registros · `}
+                Última actualización: sube el archivo en <strong>Importar</strong>
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <input
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 w-56"
+                placeholder="Buscar material o descripción..."
+                value={invSearch} onChange={e => setInvSearch(e.target.value)} />
+              <button onClick={loadInventory} disabled={invLoading}
+                className="border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50 disabled:opacity-50">
+                {invLoading ? 'Cargando...' : '🔄 Recargar'}
+              </button>
+            </div>
+          </div>
+
+          {/* Materiales en "no volver a ofertar" */}
+          {noOfertar.length > 0 && (
+            <div className="px-5 py-3 bg-red-50 border-b border-red-200">
+              <p className="text-xs font-semibold text-red-700 uppercase mb-2">
+                🚫 Materiales con restricción ({noOfertar.length})
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {noOfertar.map(n => (
+                  <div key={n.id} className="bg-white border border-red-300 rounded-full pl-2.5 pr-1 py-0.5 flex items-center gap-1.5 group">
+                    <span className="text-xs font-mono text-red-700 font-semibold">{n.material}</span>
+                    {n.condicion && <span className="text-xs text-red-500">· {n.condicion}</span>}
+                    {n.motivo && <span className="text-xs text-gray-500 italic">({n.motivo})</span>}
+                    <button onClick={() => removeNoOfertar(n.id)}
+                      className="text-red-400 hover:text-red-600 text-xs w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {invLoading && (
+            <div className="p-10 text-center text-sm text-gray-400">Cargando inventario...</div>
+          )}
+
+          {!invLoading && inventory.length === 0 && (
+            <div className="p-10 text-center">
+              <p className="text-sm text-gray-400 mb-2">Aún no hay inventario cargado.</p>
+              <button onClick={() => nav('/crm/imports')}
+                className="text-sm text-teal-600 font-medium hover:text-teal-700">
+                → Ir a Importar
+              </button>
+            </div>
+          )}
+
+          {!invLoading && inventory.length > 0 && (() => {
+            const q = invSearch.trim().toLowerCase()
+            const filtered = q
+              ? inventory.filter(i =>
+                  (i.material ?? '').toLowerCase().includes(q) ||
+                  (i.descripcion ?? '').toLowerCase().includes(q))
+              : inventory
+            const clientCentro = client?.centro ?? ''
+            return (
+              <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
+                <table className="text-xs border-collapse w-full">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      {['Material','Descripción','Lote','Caducidad','Meses Vig.','Disp.','Fuente','Centro',
+                        'Inv 1030','Inv 1031','Inv 1032','Inv 1060',
+                        'Tránsito','T.1030','T.1031','T.1032',
+                        'Disp 1031-1030','Disp 1031-1032',
+                        'Inv 1001','Inv 1003','Inv 1004','Inv 1017','Inv 1018','Inv 1022','Inv 1036',
+                        ''].map(h => (
+                        <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.slice(0, 500).map(inv => {
+                      const isCortaCad = inv.fuente === 'corta_caducidad'
+                      const highlightCentro = clientCentro && inv.centro === clientCentro
+                      return (
+                        <tr key={inv.id}
+                          className={`border-b border-gray-100 hover:bg-teal-50 ${isCortaCad ? 'bg-yellow-50/50' : ''}`}>
+                          <td className="px-2 py-1.5 font-mono font-semibold text-gray-800 whitespace-nowrap">{inv.material}</td>
+                          <td className="px-2 py-1.5 text-gray-500 max-w-48 truncate">{inv.descripcion}</td>
+                          <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{inv.lote ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">
+                            {inv.fecha_caducidad ? <span className={inv.meses_vigencia_lote != null && inv.meses_vigencia_lote < 6 ? 'text-red-600 font-semibold' : ''}>{inv.fecha_caducidad}</span> : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-gray-500">{inv.meses_vigencia_lote ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right font-semibold text-gray-800">{inv.disponible ?? '—'}</td>
+                          <td className="px-2 py-1.5">
+                            {isCortaCad && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Corta cad</span>}
+                          </td>
+                          <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${highlightCentro ? 'bg-teal-100 font-bold text-teal-700' : 'text-gray-500'}`}>
+                            {inv.centro ?? '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1030 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1031 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1032 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1060 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-600">{inv.cant_transito ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1030 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1031 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1032 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-600 font-medium">{inv.disp_1031_1030 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-600 font-medium">{inv.disp_1031_1032 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1001 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1003 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1004 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1017 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1018 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1022 ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-right">{inv.inv_1036 ?? '—'}</td>
+                          <td className="px-2 py-1.5">
+                            <button
+                              onClick={() => setNoOfertarModal({ material: inv.material, descripcion: inv.descripcion })}
+                              className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 px-2 py-0.5 rounded whitespace-nowrap">
+                              🚫 No ofertar
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {filtered.length > 500 && (
+                      <tr>
+                        <td colSpan={26} className="text-center py-4 text-xs text-gray-400 italic">
+                          Se muestran 500 de {filtered.length}. Afina la búsqueda para ver menos registros.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
       {tab === 'destinatarios' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {recipients.map(r => (
@@ -848,6 +1053,69 @@ export default function CrmClientPage() {
           )}
         </div>
       )}
-    </div>
+    
+      {/* ── Modal: Marcar material como "No volver a ofertar" ───────────── */}
+      {noOfertarModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setNoOfertarModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h2 className="text-base font-bold text-gray-800">🚫 No volver a ofertar</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {client?.razon_social ?? client?.solicitante}
+                </p>
+              </div>
+              <button onClick={() => setNoOfertarModal(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+              <p className="text-xs font-semibold text-red-700">Material: {noOfertarModal.material}</p>
+              {noOfertarModal.descripcion && (
+                <p className="text-xs text-red-600 truncate">{noOfertarModal.descripcion}</p>
+              )}
+            </div>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Condición específica (opcional)</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-red-400"
+                  placeholder='Ej: "Solo con caducidad mayor a 6 meses"'
+                  value={noOfertarForm.condicion}
+                  onChange={e => setNoOfertarForm(f => ({ ...f, condicion: e.target.value }))} />
+                <p className="text-xs text-gray-400 mt-0.5">Deja vacío para bloquear el material sin condición.</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Motivo</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-red-400"
+                  placeholder='Ej: "Cliente no quiere este material"'
+                  value={noOfertarForm.motivo}
+                  onChange={e => setNoOfertarForm(f => ({ ...f, motivo: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Meses mínimos de caducidad (opcional)</label>
+                <input type="number" min={0}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-red-400"
+                  placeholder="Ej: 6"
+                  value={noOfertarForm.meses_caducidad_min}
+                  onChange={e => setNoOfertarForm(f => ({ ...f, meses_caducidad_min: e.target.value }))} />
+                <p className="text-xs text-gray-400 mt-0.5">Si llenas este campo, el material se podrá ofertar con caducidad mayor a este valor.</p>
+              </div>
+            </div>
+            <div className="flex justify-between">
+              <button onClick={() => setNoOfertarModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={saveNoOfertar} disabled={savingNoOfertar}
+                className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50">
+                {savingNoOfertar ? 'Guardando...' : 'Marcar como no ofertar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   )
 }

@@ -121,6 +121,9 @@ export default function CrmReportsPage() {
   const urlClienteNombre = searchParams.get('cliente_nombre')
   const [tab, setTab] = useState<TabType>('suggestions')
   const [rows, setRows] = useState<any[]>([])
+  const [hideOfertados, setHideOfertados] = useState(true)
+  const [offeredKeys, setOfferedKeys] = useState<Set<string>>(new Set())
+  const [noOfertarKeys, setNoOfertarKeys] = useState<Set<string>>(new Set())
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -202,11 +205,35 @@ export default function CrmReportsPage() {
     setRows([])
     setPage(0)
     setSelected([])
-    buildQuery(0).then(({ data, count, error }) => {
-      if (error) console.error(error)
-      setRows(data ?? [])
-      setTotal(count ?? 0)
-      setHasMore((data?.length ?? 0) === PAGE_SIZE)
+
+    Promise.all([
+      buildQuery(0),
+      supabase.from('crm_offer_items')
+        .select('material, numero_pedido, crm_offers!inner(estatus, etapa)')
+        .not('crm_offers.etapa', 'in', '("cancelado","facturado")')
+        .not('crm_offers.estatus', 'eq', 'rechazada')
+        .limit(5000),
+      supabase.from('crm_no_ofertar')
+        .select('material, client_id, condicion')
+        .eq('activo', true).limit(2000),
+    ]).then(([mainRes, offeredRes, noOfertarRes]) => {
+      if (mainRes.error) console.error(mainRes.error)
+      const offeredSet = new Set<string>()
+      ;(offeredRes.data ?? []).forEach((o: any) => {
+        if (o.material) offeredSet.add(`*|${o.material}`)
+        if (o.material && o.numero_pedido) offeredSet.add(`${o.numero_pedido}|${o.material}`)
+      })
+      setOfferedKeys(offeredSet)
+
+      const noOfertarSet = new Set<string>()
+      ;(noOfertarRes.data ?? []).forEach((n: any) => {
+        if (n.client_id && n.material) noOfertarSet.add(`${n.client_id}|${n.material}`)
+      })
+      setNoOfertarKeys(noOfertarSet)
+
+      setRows(mainRes.data ?? [])
+      setTotal(mainRes.count ?? 0)
+      setHasMore((mainRes.data?.length ?? 0) === PAGE_SIZE)
       setLoading(false)
     })
   }, [buildQuery])
@@ -278,6 +305,18 @@ export default function CrmReportsPage() {
   }
 
   const visibleRows = rows.filter(row => {
+    // Hide if already offered (match by pedido+material, falling back to just material)
+    if (hideOfertados) {
+      const matCol = tab === 'suggestions' ? 'material_sugerido' : 'material'
+      const altMatCol = tab === 'suggestions' ? 'material_solicitado' : 'material'
+      const mat = row[matCol] ?? row[altMatCol]
+      const pedido = row.pedido ?? row.numero_pedido ?? ''
+      if (mat) {
+        if (pedido && offeredKeys.has(`${pedido}|${mat}`)) return false
+      }
+      // Hide if client has this material in no_ofertar
+      if (row.client_id && mat && noOfertarKeys.has(`${row.client_id}|${mat}`)) return false
+    }
     return Object.entries(colFilters).every(([key, val]) => {
       if (!val) return true
       return String(row[key] ?? '').toLowerCase().includes(val.toLowerCase())
@@ -481,6 +520,11 @@ export default function CrmReportsPage() {
           <input type="checkbox" checked={soloDisponibles}
             onChange={e => setSoloDisponibles(e.target.checked)} />
           Solo disponible &gt; 0
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap" title="Oculta materiales que ya están en alguna oferta activa o marcados como 'no ofertar'">
+          <input type="checkbox" checked={hideOfertados}
+            onChange={e => setHideOfertados(e.target.checked)} />
+          🚫 Ocultar ya ofertados
         </label>
         {hasFilters && (
           <button onClick={clearFilters}
