@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, getCachedUser } from '../../lib/supabase'
 import RecipientsTable from '../../components/RecipientsTable'
 import ContactsTable from '../../components/ContactsTable'
 import SugFilters from '../../components/SugFilters'
