@@ -131,12 +131,21 @@ function InventarioGeneralCard() {
 
         allRows.push({
           material,
-          descripcion:     col(r, 'Descripción', 'Descripcion') || null,
-          centro:          col(r, 'Centro') || null,
-          almacen:         col(r, 'Almacén', 'Almacen') || null,
-          disponible:      calc_disp,
-          cant_transito:   parseNum(col(r, 'Cant. en Tránsito', 'Cant. en Transito', 'Cantidad en Transito')),
-          fuente:          'general',
+          descripcion:       col(r, 'Descripción', 'Descripcion') || null,
+          centro:            col(r, 'Centro') || null,
+          almacen:           col(r, 'Almacén', 'Almacen') || null,
+          um:                col(r, 'UM', 'Un.medida', 'Unidad medida base') || null,
+          libre_utilizacion: libre,
+          entrega_cliente:   entrega,
+          cant_transito:     parseNum(col(r, 'Cant. en Tránsito', 'Cant. en Transito', 'Cantidad en Transito')),
+          ped_pendientes:    parseNum(col(r, 'Ped. Pendientes', 'Pedidos Pendientes')),
+          disponibilidad:    parseNum(col(r, 'Disponibilidad')),
+          tipo_mat:          col(r, 'Tipo Mat.', 'Tipo material') || null,
+          cto_suminis:       col(r, 'Cto. Suminis.', 'Centro Suministro') || null,
+          stock_seguridad:   parseNum(col(r, 'Stock de Seguridad', 'Stock Seguridad')),
+          pct_disp_vs_stock: parseNum(col(r, '%Disp.VS Stock de Se', '%Disp.VS Stock de Seg', '% Disp VS Stock')),
+          disponible:        calc_disp,
+          fuente:            'general',
         })
       }
 
@@ -256,10 +265,21 @@ function CortaCaducidadCard() {
           centro:              col(r, 'Centro') || null,
           almacen:             col(r, 'Almacén', 'Almacen') || null,
           lote:                col(r, 'Lote') || null,
-          fecha_caducidad:     parseDate(col(r, 'Fecha de Caducidad', 'Fecha Caducidad', 'FeCaduc', 'FePreferCons')),
-          disponible:          parseNum(col(r, 'Disponible', 'CantidadDisp', 'Libre utilización', 'Libre utilizacion')),
+          fecha_caducidad:     parseDate(col(r, 'FeCaduc/FePreferCons', 'Fecha de Caducidad', 'Fecha Caducidad', 'FeCaduc', 'FePreferCons')),
+          disponible:          parseNum(col(r, 'Libre utilización', 'Libre utilizacion', 'Disponible', 'CantidadDisp')),
+          libre_utilizacion:   parseNum(col(r, 'Libre utilización', 'Libre utilizacion')),
+          um:                  col(r, 'Unidad medida base', 'UM') || null,
           meses_vigencia_lote: parseNum(col(r, 'Meses vigencia lote')),
-          fuente:              'corta_caducidad',
+          tipo_mat:            col(r, 'Tipo material', 'Tipo Mat.') || null,
+          raw_data: {
+            'Trans./Trasl.':         col(r, 'Trans./Trasl.', 'Trans. Trasl.') || null,
+            'Bloqueado':             col(r, 'Bloqueado') || null,
+            'Sector':                col(r, 'Sector') || null,
+            'Descr. Sector':         col(r, 'Descr. Sector') || null,
+            'Grupo de artículos':    col(r, 'Grupo de artículos', 'Grupo de articulos') || null,
+            'Descr. Grupo de Art.':  col(r, 'Descr. Grupo de Art.') || null,
+          },
+          fuente: 'corta_caducidad',
         })
       }
 

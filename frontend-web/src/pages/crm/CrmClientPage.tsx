@@ -438,151 +438,24 @@ export default function CrmClientPage() {
         </div>
       )}
 
-      {/* TAB: Destinatarios */}
       {/* TAB: Inventario disponible (para consultas durante llamadas) */}
       {tab === 'inventario' && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h2 className="font-semibold text-gray-700">📦 Inventario disponible</h2>
-              <p className="text-xs text-gray-400">
-                {inventory.length > 0 && `${inventory.length} registros · `}
-                Última actualización: sube el archivo en <strong>Importar</strong>
-              </p>
-            </div>
-            <div className="flex gap-2 items-center">
-              <input
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 w-56"
-                placeholder="Buscar material o descripción..."
-                value={invSearch} onChange={e => setInvSearch(e.target.value)} />
-              <button onClick={loadInventory} disabled={invLoading}
-                className="border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50 disabled:opacity-50">
-                {invLoading ? 'Cargando...' : '🔄 Recargar'}
-              </button>
-            </div>
-          </div>
-
-          {/* Materiales en "no volver a ofertar" */}
-          {noOfertar.length > 0 && (
-            <div className="px-5 py-3 bg-red-50 border-b border-red-200">
-              <p className="text-xs font-semibold text-red-700 uppercase mb-2">
-                🚫 Materiales con restricción ({noOfertar.length})
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {noOfertar.map(n => (
-                  <div key={n.id} className="bg-white border border-red-300 rounded-full pl-2.5 pr-1 py-0.5 flex items-center gap-1.5 group">
-                    <span className="text-xs font-mono text-red-700 font-semibold">{n.material}</span>
-                    {n.condicion && <span className="text-xs text-red-500">· {n.condicion}</span>}
-                    {n.motivo && <span className="text-xs text-gray-500 italic">({n.motivo})</span>}
-                    <button onClick={() => removeNoOfertar(n.id)}
-                      className="text-red-400 hover:text-red-600 text-xs w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {invLoading && (
-            <div className="p-10 text-center text-sm text-gray-400">Cargando inventario...</div>
-          )}
-
-          {!invLoading && inventory.length === 0 && (
-            <div className="p-10 text-center">
-              <p className="text-sm text-gray-400 mb-2">Aún no hay inventario cargado.</p>
-              <button onClick={() => nav('/crm/imports')}
-                className="text-sm text-teal-600 font-medium hover:text-teal-700">
-                → Ir a Importar
-              </button>
-            </div>
-          )}
-
-          {!invLoading && inventory.length > 0 && (() => {
-            const q = invSearch.trim().toLowerCase()
-            const filtered = q
-              ? inventory.filter(i =>
-                  (i.material ?? '').toLowerCase().includes(q) ||
-                  (i.descripcion ?? '').toLowerCase().includes(q))
-              : inventory
-            const clientCentro = client?.centro ?? ''
-            return (
-              <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
-                <table className="text-xs border-collapse w-full">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      {['Material','Descripción','Lote','Caducidad','Meses Vig.','Disp.','Fuente','Centro',
-                        'Inv 1030','Inv 1031','Inv 1032','Inv 1060',
-                        'Tránsito','T.1030','T.1031','T.1032',
-                        'Disp 1031-1030','Disp 1031-1032',
-                        'Inv 1001','Inv 1003','Inv 1004','Inv 1017','Inv 1018','Inv 1022','Inv 1036',
-                        ''].map(h => (
-                        <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.slice(0, 500).map(inv => {
-                      const isCortaCad = inv.fuente === 'corta_caducidad'
-                      const highlightCentro = clientCentro && inv.centro === clientCentro
-                      return (
-                        <tr key={inv.id}
-                          className={`border-b border-gray-100 hover:bg-teal-50 ${isCortaCad ? 'bg-yellow-50/50' : ''}`}>
-                          <td className="px-2 py-1.5 font-mono font-semibold text-gray-800 whitespace-nowrap">{inv.material}</td>
-                          <td className="px-2 py-1.5 text-gray-500 max-w-48 truncate">{inv.descripcion}</td>
-                          <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{inv.lote ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">
-                            {inv.fecha_caducidad ? <span className={inv.meses_vigencia_lote != null && inv.meses_vigencia_lote < 6 ? 'text-red-600 font-semibold' : ''}>{inv.fecha_caducidad}</span> : '—'}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-gray-500">{inv.meses_vigencia_lote ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right font-semibold text-gray-800">{inv.disponible ?? '—'}</td>
-                          <td className="px-2 py-1.5">
-                            {isCortaCad && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Corta cad</span>}
-                          </td>
-                          <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${highlightCentro ? 'bg-teal-100 font-bold text-teal-700' : 'text-gray-500'}`}>
-                            {inv.centro ?? '—'}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1030 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1031 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1032 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1060 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-blue-600">{inv.cant_transito ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1030 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1031 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-blue-500">{inv.cant_transito_1032 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-emerald-600 font-medium">{inv.disp_1031_1030 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right text-emerald-600 font-medium">{inv.disp_1031_1032 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1001 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1003 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1004 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1017 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1018 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1022 ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-right">{inv.inv_1036 ?? '—'}</td>
-                          <td className="px-2 py-1.5">
-                            <button
-                              onClick={() => setNoOfertarModal({ material: inv.material, descripcion: inv.descripcion })}
-                              className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 px-2 py-0.5 rounded whitespace-nowrap">
-                              🚫 No ofertar
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {filtered.length > 500 && (
-                      <tr>
-                        <td colSpan={26} className="text-center py-4 text-xs text-gray-400 italic">
-                          Se muestran 500 de {filtered.length}. Afina la búsqueda para ver menos registros.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })()}
-        </div>
+        <InventarioTab
+          inventory={inventory}
+          invLoading={invLoading}
+          invSearch={invSearch}
+          setInvSearch={setInvSearch}
+          loadInventory={loadInventory}
+          noOfertar={noOfertar}
+          removeNoOfertar={removeNoOfertar}
+          clientCentro={client?.centro ?? ''}
+          onNoOfertarClick={(material: string, descripcion?: string) =>
+            setNoOfertarModal({ material, descripcion })}
+          goToImports={() => nav('/crm/imports')}
+        />
       )}
 
-      {tab === 'destinatarios' && (
+            {tab === 'destinatarios' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {recipients.map(r => (
             <div key={r.id} className="px-5 py-4 border-b border-gray-100 last:border-0">
@@ -1117,5 +990,283 @@ export default function CrmClientPage() {
       )}
 
 </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─ InventarioTab: 2 sub-tabs (Inventario general / Corta caducidad)
+// ─────────────────────────────────────────────────────────────────────────────
+type InventarioTabProps = {
+  inventory: any[]
+  invLoading: boolean
+  invSearch: string
+  setInvSearch: (v: string) => void
+  loadInventory: () => void
+  noOfertar: any[]
+  removeNoOfertar: (id: string) => void
+  clientCentro: string
+  onNoOfertarClick: (material: string, descripcion?: string) => void
+  goToImports: () => void
+}
+
+function InventarioTab(props: InventarioTabProps) {
+  const { inventory, invLoading, invSearch, setInvSearch, loadInventory,
+          noOfertar, removeNoOfertar, clientCentro, onNoOfertarClick, goToImports } = props
+
+  const [subTab, setSubTab] = useState<'general' | 'corta_caducidad'>('general')
+  const [fCentro, setFCentro]   = useState('')
+  const [fAlmacen, setFAlmacen] = useState('')
+
+  // Split the two inventory sources
+  const invGeneral = inventory.filter(i => i.fuente === 'general')
+  const invCorta   = inventory.filter(i => i.fuente === 'corta_caducidad')
+  const activeList = subTab === 'general' ? invGeneral : invCorta
+
+  // Build filter options from the active dataset
+  const centros  = [...new Set(activeList.map(i => i.centro).filter(Boolean))].sort()
+  const almacenes = [...new Set(activeList.map(i => i.almacen).filter(Boolean))].sort()
+
+  // Apply filters
+  const q = invSearch.trim().toLowerCase()
+  const filtered = activeList.filter(i => {
+    if (fCentro && i.centro !== fCentro) return false
+    if (fAlmacen && i.almacen !== fAlmacen) return false
+    if (q) {
+      const mat = (i.material ?? '').toLowerCase()
+      const desc = (i.descripcion ?? '').toLowerCase()
+      if (!mat.includes(q) && !desc.includes(q)) return false
+    }
+    return true
+  })
+
+  const clearFilters = () => { setInvSearch(''); setFCentro(''); setFAlmacen('') }
+  const hasFilters = invSearch || fCentro || fAlmacen
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="font-semibold text-gray-700">📦 Inventario disponible</h2>
+          <p className="text-xs text-gray-400">
+            {inventory.length > 0 && `${inventory.length} registros · `}
+            Última actualización: sube el archivo en <strong>Importar</strong>
+          </p>
+        </div>
+        <button onClick={loadInventory} disabled={invLoading}
+          className="border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50 disabled:opacity-50">
+          {invLoading ? 'Cargando...' : '🔄 Recargar'}
+        </button>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="px-5 pt-3 flex gap-1 border-b border-gray-100">
+        {([
+          { key: 'general',         label: `📦 Inventario general (${invGeneral.length})` },
+          { key: 'corta_caducidad', label: `⏳ Corta caducidad (${invCorta.length})` },
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => { setSubTab(t.key); clearFilters() }}
+            className={`px-4 py-2 text-xs font-medium border-b-2 transition ${
+              subTab === t.key
+                ? 'border-teal-600 text-teal-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters row */}
+      <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap gap-2 items-center bg-gray-50">
+        <input
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-teal-400 w-56 bg-white"
+          placeholder="Material o descripción..."
+          value={invSearch} onChange={e => setInvSearch(e.target.value)} />
+
+        <select
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-teal-400 bg-white min-w-28"
+          value={fCentro} onChange={e => setFCentro(e.target.value)}>
+          <option value="">Centro: todos</option>
+          {centros.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <select
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-teal-400 bg-white min-w-28"
+          value={fAlmacen} onChange={e => setFAlmacen(e.target.value)}>
+          <option value="">Almacén: todos</option>
+          {almacenes.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+
+        {hasFilters && (
+          <button onClick={clearFilters}
+            className="text-xs text-red-400 hover:text-red-600 font-medium px-2">
+            Limpiar ×
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-gray-400">
+          {filtered.length} de {activeList.length}
+        </span>
+      </div>
+
+      {/* Banner "no ofertar" */}
+      {noOfertar.length > 0 && (
+        <div className="px-5 py-3 bg-red-50 border-b border-red-200">
+          <p className="text-xs font-semibold text-red-700 uppercase mb-2">
+            🚫 Materiales con restricción ({noOfertar.length})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {noOfertar.map(n => (
+              <div key={n.id} className="bg-white border border-red-300 rounded-full pl-2.5 pr-1 py-0.5 flex items-center gap-1.5 group">
+                <span className="text-xs font-mono text-red-700 font-semibold">{n.material}</span>
+                {n.condicion && <span className="text-xs text-red-500">· {n.condicion}</span>}
+                {n.motivo && <span className="text-xs text-gray-500 italic">({n.motivo})</span>}
+                <button onClick={() => removeNoOfertar(n.id)}
+                  className="text-red-400 hover:text-red-600 text-xs w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100">×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading / empty */}
+      {invLoading && (
+        <div className="p-10 text-center text-sm text-gray-400">Cargando inventario...</div>
+      )}
+      {!invLoading && activeList.length === 0 && (
+        <div className="p-10 text-center">
+          <p className="text-sm text-gray-400 mb-2">
+            {subTab === 'general' ? 'Aún no hay inventario general cargado.' : 'Aún no hay lotes de corta caducidad cargados.'}
+          </p>
+          <button onClick={goToImports}
+            className="text-sm text-teal-600 font-medium hover:text-teal-700">
+            → Ir a Importar
+          </button>
+        </div>
+      )}
+
+      {/* Table: GENERAL */}
+      {!invLoading && subTab === 'general' && activeList.length > 0 && (
+        <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
+          <table className="text-xs border-collapse w-full">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                {['Centro','Almacén','Material','Descripción','UM',
+                  'Libre Utilización','Cant. Tránsito','Entrega cliente','Ped. Pendientes','Disponibilidad',
+                  'Disponible (calc)','Tipo Mat.','Cto. Suminis.','Stock Seg.','%Disp.VS Stock','']
+                  .map(h => (
+                  <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 500).map(inv => {
+                const hl = clientCentro && inv.centro === clientCentro
+                return (
+                  <tr key={inv.id} className="border-b border-gray-100 hover:bg-teal-50">
+                    <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${hl ? 'bg-teal-100 font-bold text-teal-700' : 'text-gray-600'}`}>
+                      {inv.centro ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-gray-600">{inv.almacen ?? '—'}</td>
+                    <td className="px-2 py-1.5 font-mono font-semibold text-gray-800 whitespace-nowrap">{inv.material}</td>
+                    <td className="px-2 py-1.5 text-gray-500 max-w-56 truncate">{inv.descripcion}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{inv.um ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right">{inv.libre_utilizacion ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right text-blue-600">{inv.cant_transito ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right text-orange-600">{inv.entrega_cliente ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right text-amber-600">{inv.ped_pendientes ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right">{inv.disponibilidad ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold text-green-700">{inv.disponible ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{inv.tipo_mat ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{inv.cto_suminis ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right">{inv.stock_seguridad ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-right">{inv.pct_disp_vs_stock != null ? `${inv.pct_disp_vs_stock}%` : '—'}</td>
+                    <td className="px-2 py-1.5">
+                      <button onClick={() => onNoOfertarClick(inv.material, inv.descripcion)}
+                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 px-2 py-0.5 rounded whitespace-nowrap">
+                        🚫 No ofertar
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length > 500 && (
+                <tr>
+                  <td colSpan={16} className="text-center py-4 text-xs text-gray-400 italic">
+                    Se muestran 500 de {filtered.length}. Afina la búsqueda para ver menos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Table: CORTA CADUCIDAD */}
+      {!invLoading && subTab === 'corta_caducidad' && activeList.length > 0 && (
+        <div className="overflow-x-auto" style={{ maxHeight: '60vh' }}>
+          <table className="text-xs border-collapse w-full">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                {['Centro','Almacén','Material','Texto breve','Lote','FeCaduc/FePreferCons',
+                  'Libre utilización','UM','Trans./Trasl.','Bloqueado','Sector','Descr. Sector',
+                  'Descr. Grupo de Art.','Grupo artículos','Tipo material','']
+                  .map(h => (
+                  <th key={h} className="px-2 py-2 text-left text-gray-500 font-semibold border-b border-gray-200 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 500).map(inv => {
+                const hl = clientCentro && inv.centro === clientCentro
+                const rd = inv.raw_data ?? {}
+                const feCadMonths = inv.meses_vigencia_lote
+                return (
+                  <tr key={inv.id} className="border-b border-gray-100 hover:bg-teal-50 bg-yellow-50/30">
+                    <td className={`px-2 py-1.5 font-mono whitespace-nowrap ${hl ? 'bg-teal-100 font-bold text-teal-700' : 'text-gray-600'}`}>
+                      {inv.centro ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-gray-600">{inv.almacen ?? '—'}</td>
+                    <td className="px-2 py-1.5 font-mono font-semibold text-gray-800 whitespace-nowrap">{inv.material}</td>
+                    <td className="px-2 py-1.5 text-gray-500 max-w-56 truncate">{inv.descripcion}</td>
+                    <td className="px-2 py-1.5 font-mono text-gray-600 whitespace-nowrap">{inv.lote ?? '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {inv.fecha_caducidad
+                        ? <span className={feCadMonths != null && feCadMonths < 6 ? 'text-red-600 font-semibold' : 'text-gray-700'}>{inv.fecha_caducidad}</span>
+                        : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-semibold text-green-700">{inv.libre_utilizacion ?? inv.disponible ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{inv.um ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{rd['Trans./Trasl.'] ?? '—'}</td>
+                    <td className="px-2 py-1.5">
+                      {rd['Bloqueado'] ? <span className="bg-red-100 text-red-700 text-xs px-1.5 py-0.5 rounded-full">{rd['Bloqueado']}</span> : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-gray-500">{rd['Sector'] ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500 max-w-32 truncate">{rd['Descr. Sector'] ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500 max-w-40 truncate">{rd['Descr. Grupo de Art.'] ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{rd['Grupo de artículos'] ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{inv.tipo_mat ?? '—'}</td>
+                    <td className="px-2 py-1.5">
+                      <button onClick={() => onNoOfertarClick(inv.material, inv.descripcion)}
+                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 px-2 py-0.5 rounded whitespace-nowrap">
+                        🚫 No ofertar
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length > 500 && (
+                <tr>
+                  <td colSpan={16} className="text-center py-4 text-xs text-gray-400 italic">
+                    Se muestran 500 de {filtered.length}. Afina la búsqueda para ver menos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
