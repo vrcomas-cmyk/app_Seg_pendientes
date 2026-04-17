@@ -15,6 +15,7 @@ import CrmCedisPage from './pages/crm/CrmCedisPage'
 import CrmNewClientPage from './pages/crm/CrmNewClientPage'
 import CrmSpecialOrdersPage from './pages/crm/CrmSpecialOrdersPage'
 import CrmSuggestionsImportPage from './pages/crm/CrmSuggestionsImportPage'
+import CrmImportHubPage from './pages/crm/CrmImportHubPage'
 import CrmOffersListPage from './pages/crm/CrmOffersListPage'
 import CrmVentasPage from './pages/crm/CrmVentasPage'
 import CrmReportsPage from './pages/crm/CrmReportsPage'
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="/crm/:clientId/order/:orderId/cedis" element={<CrmCedisPage />} />
         <Route path="/crm/special-orders" element={<CrmSpecialOrdersPage />} />
         <Route path="/crm/suggestions-import" element={<CrmSuggestionsImportPage />} />
+        <Route path="/crm/imports" element={<RouteGuard module="crm"><CrmImportHubPage /></RouteGuard>} />
         <Route path="/crm/offers" element={<CrmOffersListPage />} />
         <Route path="/crm/ventas" element={<CrmVentasPage />} />
         <Route path="/crm/venta-manual" element={<RouteGuard module="crm"><CrmVentaManualPage /></RouteGuard>} />

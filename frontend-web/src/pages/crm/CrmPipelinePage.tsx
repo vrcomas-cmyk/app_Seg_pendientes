@@ -22,6 +22,14 @@ const ITEM_ESTATUS_COLOR: Record<string,string> = {
   facturado:'bg-green-200 text-green-800', cancelado:'bg-gray-100 text-gray-400',
 }
 
+// SAP status label helper: given an item, returns its SAP-side state
+function getSapStatus(item: any): { label: string; color: string; selectable: boolean } {
+  if (item.numero_factura) return { label: '✅ Facturado', color: 'bg-green-100 text-green-700 border-green-200', selectable: false }
+  if (item.folio_entrega_salida) return { label: '📦 Delivery asignado', color: 'bg-blue-100 text-blue-700 border-blue-200', selectable: true }
+  if (item.cedis_request_id) return { label: '🔄 En CEDIS', color: 'bg-amber-100 text-amber-700 border-amber-200', selectable: false }
+  return { label: 'Sin delivery', color: 'bg-gray-100 text-gray-500 border-gray-200', selectable: false }
+}
+
 function dias(f: string|null) {
   if (!f) return 0
   return Math.floor((Date.now() - new Date(f).getTime()) / 86400000)
@@ -109,15 +117,15 @@ export default function CrmPipelinePage() {
     const { data } = await supabase
       .from('crm_offers')
       .select(`
-        id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta,
         id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta, task_id,
         client_id, folio_pedido, gpo_cliente, gpo_vendedor,
         crm_clients(id, solicitante, razon_social),
         crm_offer_items(
           id, material, descripcion,
           cantidad_aceptada, cantidad_ofertada, precio_aceptado, precio_oferta,
-          numero_pedido, numero_factura, estatus, lote, caducidad, um,
-          cedis_request_id, folio_entrega_salida, lotes, aceptado
+          numero_pedido, numero_factura, fecha_factura, estatus, lote, caducidad, um,
+          cedis_request_id, folio_entrega_salida, fecha_entrega_salida,
+          lotes, aceptado
         )
       `)
       .order('created_at', { ascending: false })
@@ -148,8 +156,12 @@ export default function CrmPipelinePage() {
   const visible = ventas.filter(v => {
     if (filterArchivadas) return ['cancelado','cerrada'].includes(v.etapa)
     if (['cancelado','cerrada'].includes(v.etapa)) return false
+    if (filterEtapa === 'delivery_sin_factura') {
+      const items = v.crm_offer_items ?? []
+      if (!items.some((i: any) => i.folio_entrega_salida && !i.numero_factura)) return false
+    }
     if (filterEtapa === 'activas' && v.etapa === 'facturado') return false
-    if (filterEtapa && !['activas',''].includes(filterEtapa) && v.etapa !== filterEtapa) return false
+    if (filterEtapa && !['activas','','delivery_sin_factura'].includes(filterEtapa) && v.etapa !== filterEtapa) return false
     if (search) {
       const q = search.toLowerCase()
       const cli = v.crm_clients
@@ -458,6 +470,7 @@ export default function CrmPipelinePage() {
           {[
             { key:'activas', label:`Activas (${countActivas})` },
             { key:'', label:'Todas' },
+            { key:'delivery_sin_factura', label:'📦 Delivery sin factura' },
             { key:'oferta', label:'Oferta' }, { key:'venta', label:'Venta' },
             { key:'cedis', label:'CEDIS' }, { key:'transmision', label:'Transmisión' },
             { key:'facturado', label:'Facturadas' },
@@ -688,9 +701,19 @@ export default function CrmPipelinePage() {
                                             </td>
                                             {/* Estatus */}
                                             <td className="px-2 py-2">
-                                              <span className={`px-1.5 py-0.5 rounded-full font-medium ${ITEM_ESTATUS_COLOR[item.estatus]??'bg-gray-100 text-gray-500'}`}>
-                                                {(item.estatus??'').replace(/_/g,' ')}
-                                              </span>
+                                              {(() => {
+                                                const sap = getSapStatus(item)
+                                                return (
+                                                  <div className="flex flex-col gap-0.5">
+                                                    <span className={`px-1.5 py-0.5 rounded-full font-medium ${ITEM_ESTATUS_COLOR[item.estatus]??'bg-gray-100 text-gray-500'}`}>
+                                                      {(item.estatus??'').replace(/_/g,' ')}
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 rounded-full font-medium border text-[10px] whitespace-nowrap ${sap.color}`}>
+                                                      {sap.label}
+                                                    </span>
+                                                  </div>
+                                                )
+                                              })()}
                                             </td>
                                             {/* Disponibilidad toggle */}
                                             <td className="px-2 py-2" onClick={e=>e.stopPropagation()}>
