@@ -84,8 +84,18 @@ export default function CrmImportHubPage() {
   )
 }
 
-// ── INVENTARIO ───────────────────────────────────────────────────────────────
+// ── INVENTARIO (2 archivos separados) ────────────────────────────────────────
 function InventarioImport() {
+  return (
+    <div className="space-y-4">
+      <InventarioGeneralCard />
+      <CortaCaducidadCard />
+    </div>
+  )
+}
+
+// ── Card 1: Inventario general ───────────────────────────────────────────────
+function InventarioGeneralCard() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState('')
@@ -99,80 +109,35 @@ function InventarioImport() {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array', cellDates: true })
 
-      // Buscar hoja de Inventario general
-      const sheetMap: Record<string, string> = {}
-      wb.SheetNames.forEach(s => { sheetMap[s.trim().toLowerCase()] = s })
-
-      const hojaInv = wb.SheetNames.find(s => {
-        const n = s.trim().toLowerCase()
-        return n === 'inventario' || n === 'sheets1' || n.includes('inventario')
-      })
-      const hojaCC = wb.SheetNames.find(s => {
-        const n = s.trim().toLowerCase()
-        return n.includes('corta') && n.includes('caducidad')
-      })
-
-      if (!hojaInv && !hojaCC) {
-        toast.error('No se encontró hoja "Inventario" ni "Corta caducidad".')
+      // Busca hoja "sheets1" o la primera disponible
+      const hoja = wb.SheetNames.find(s => s.trim().toLowerCase() === 'sheets1') ?? wb.SheetNames[0]
+      if (!hoja) {
+        toast.error('No se encontró ninguna hoja en el archivo.')
         setLoading(false); return
       }
 
+      setProgress(`Procesando hoja "${hoja}"...`)
+      const ws = wb.Sheets[hoja]
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
+
       const allRows: any[] = []
+      for (const r of rows) {
+        const material = col(r, 'Material')
+        if (!material) continue
 
-      // ─ Inventario general ─────────────────────────────────────────────────
-      if (hojaInv) {
-        setProgress(`Procesando hoja "${hojaInv}"...`)
-        const ws = wb.Sheets[hojaInv]
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
-        for (const r of rows) {
-          const material = col(r, 'Material')
-          if (!material) continue
-          allRows.push({
-            material,
-            descripcion:         col(r, 'Texto breve de material', 'Descripcion', 'Descripción') || null,
-            centro:              col(r, 'Centro') || null,
-            almacen:             col(r, 'Almacén', 'Almacen') || null,
-            lote:                col(r, 'Lote') || null,
-            fecha_caducidad:     parseDate(col(r, 'Fecha de Caducidad', 'Fecha Caducidad', 'FeCaduc', 'FePreferCons')),
-            disponible:          parseNum(col(r, 'Disponible', 'CantidadDisp', 'Libre utilizacion')),
-            meses_vigencia_lote: parseNum(col(r, 'Meses vigencia lote')),
-            inv_1030: parseNum(col(r, 'Inv 1030')),
-            inv_1031: parseNum(col(r, 'Inv 1031')),
-            inv_1032: parseNum(col(r, 'Inv 1032')),
-            inv_1060: parseNum(col(r, 'Inv 1060')),
-            inv_1001: parseNum(col(r, 'Inv 1001')),
-            inv_1003: parseNum(col(r, 'Inv 1003')),
-            inv_1004: parseNum(col(r, 'Inv 1004')),
-            inv_1017: parseNum(col(r, 'Inv 1017')),
-            inv_1018: parseNum(col(r, 'Inv 1018')),
-            inv_1022: parseNum(col(r, 'Inv 1022')),
-            inv_1036: parseNum(col(r, 'Inv 1036')),
-            cant_transito: parseNum(col(r, 'Cant. en Tránsito', 'Cant. en Transito', 'Cantidad en Transito')),
-            fuente: 'general',
-          })
-        }
-      }
+        const libre    = parseNum(col(r, 'Libre Utilización', 'Libre Utilizacion', 'Libre utilizacion', 'Libre utilización')) ?? 0
+        const entrega  = parseNum(col(r, 'Entrega a cliente', 'Entrega cliente')) ?? 0
+        const calc_disp = libre - entrega
 
-      // ─ Corta Caducidad (con lotes desglosados) ────────────────────────────
-      if (hojaCC) {
-        setProgress(`Procesando hoja "${hojaCC}"...`)
-        const ws = wb.Sheets[hojaCC]
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
-        for (const r of rows) {
-          const material = col(r, 'Material')
-          if (!material) continue
-          allRows.push({
-            material,
-            descripcion:         col(r, 'Texto breve de material', 'Descripcion', 'Descripción') || null,
-            centro:              col(r, 'Centro') || null,
-            almacen:             col(r, 'Almacén', 'Almacen') || null,
-            lote:                col(r, 'Lote') || null,
-            fecha_caducidad:     parseDate(col(r, 'Fecha de Caducidad', 'FeCaduc', 'FePreferCons')),
-            disponible:          parseNum(col(r, 'Disponible', 'CantidadDisp', 'Libre utilizacion')),
-            meses_vigencia_lote: parseNum(col(r, 'Meses vigencia lote')),
-            fuente: 'corta_caducidad',
-          })
-        }
+        allRows.push({
+          material,
+          descripcion:     col(r, 'Descripción', 'Descripcion') || null,
+          centro:          col(r, 'Centro') || null,
+          almacen:         col(r, 'Almacén', 'Almacen') || null,
+          disponible:      calc_disp,
+          cant_transito:   parseNum(col(r, 'Cant. en Tránsito', 'Cant. en Transito', 'Cantidad en Transito')),
+          fuente:          'general',
+        })
       }
 
       if (allRows.length === 0) {
@@ -180,19 +145,19 @@ function InventarioImport() {
         setLoading(false); return
       }
 
-      // Reemplazar completo
-      setProgress(`Eliminando inventario anterior...`)
+      // Reemplazar SOLO registros con fuente='general'
+      setProgress('Eliminando inventario general anterior...')
       let deleted = 0
       while (true) {
-        const { data: chunk } = await supabase.from('crm_inventory').select('id').limit(500)
+        const { data: chunk } = await supabase.from('crm_inventory')
+          .select('id').eq('fuente', 'general').limit(500)
         if (!chunk || chunk.length === 0) break
         await supabase.from('crm_inventory').delete().in('id', chunk.map(r => r.id))
         deleted += chunk.length
         setProgress(`Eliminando anteriores... ${deleted}`)
       }
-      await new Promise(r => setTimeout(r, 800))
+      await new Promise(r => setTimeout(r, 600))
 
-      // Insertar en lotes
       const BATCH = 300
       let inserted = 0
       for (let i = 0; i < allRows.length; i += BATCH) {
@@ -200,12 +165,12 @@ function InventarioImport() {
         const { error } = await supabase.from('crm_inventory').insert(allRows.slice(i, i + BATCH))
         if (error) { toast.error(error.message); setLoading(false); return }
         inserted += Math.min(BATCH, allRows.length - i)
-        if (i + BATCH < allRows.length) await new Promise(r => setTimeout(r, 250))
+        if (i + BATCH < allRows.length) await new Promise(r => setTimeout(r, 200))
       }
 
       setCount({ inserted, deleted })
       setProgress('')
-      toast.success(`${inserted} filas de inventario cargadas`)
+      toast.success(`${inserted} filas de inventario general cargadas`)
     } catch (e: any) {
       toast.error('Error: ' + (e?.message ?? ''))
       console.error(e)
@@ -217,13 +182,9 @@ function InventarioImport() {
     <div className="bg-white rounded-xl border border-gray-200 p-6">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h2 className="font-semibold text-gray-800">Archivo de inventario</h2>
+          <h2 className="font-semibold text-gray-800">📦 Inventario general</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Sube el Excel del sugeridor o exportación de SAP. Detecta automáticamente las hojas
-            <strong className="mx-1">Inventario</strong>
-            y
-            <strong className="mx-1">Corta caducidad</strong>
-            (con lotes y caducidad). Se reemplaza por completo en cada subida.
+            Archivo con pestaña <strong>sheets1</strong> (o la primera hoja). Reemplaza el inventario general en cada carga.
           </p>
         </div>
         {count && (
@@ -248,8 +209,131 @@ function InventarioImport() {
           if (inputRef.current) inputRef.current.value = ''
         }} />
       <div className="mt-4 text-xs text-gray-500 space-y-1">
-        <p><strong>Hoja "Inventario":</strong> inventario general por centro/almacén con columnas Inv_1030–Inv_1036, Cant. en Tránsito.</p>
-        <p><strong>Hoja "Corta caducidad":</strong> desglose de lotes y fechas de caducidad.</p>
+        <p><strong>Columnas esperadas:</strong> Centro · Almacén · Material · Descripción · UM · Libre Utilización · Entrega a cliente · Cant. en Tránsito</p>
+        <p><strong>Cálculo:</strong> <code className="bg-gray-100 px-1 rounded">Disponible = Libre Utilización − Entrega a cliente</code></p>
+      </div>
+    </div>
+  )
+}
+
+// ── Card 2: Corta caducidad (desglose de lotes) ──────────────────────────────
+function CortaCaducidadCard() {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [count, setCount] = useState<{ inserted: number; deleted: number } | null>(null)
+
+  const handleFile = async (file: File) => {
+    setLoading(true)
+    setProgress('Leyendo archivo...')
+    setCount(null)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true })
+
+      // Buscar específicamente hoja "Corta caducidad"
+      const hojaCC = wb.SheetNames.find(s => {
+        const n = s.trim().toLowerCase()
+        return n.includes('corta') && n.includes('caducidad')
+      })
+
+      if (!hojaCC) {
+        toast.error(`No se encontró hoja "Corta caducidad". Hojas disponibles: ${wb.SheetNames.join(', ')}`)
+        setLoading(false); return
+      }
+
+      setProgress(`Procesando hoja "${hojaCC}"...`)
+      const ws = wb.Sheets[hojaCC]
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
+
+      const allRows: any[] = []
+      for (const r of rows) {
+        const material = col(r, 'Material')
+        if (!material) continue
+        allRows.push({
+          material,
+          descripcion:         col(r, 'Texto breve de material', 'Descripción', 'Descripcion') || null,
+          centro:              col(r, 'Centro') || null,
+          almacen:             col(r, 'Almacén', 'Almacen') || null,
+          lote:                col(r, 'Lote') || null,
+          fecha_caducidad:     parseDate(col(r, 'Fecha de Caducidad', 'Fecha Caducidad', 'FeCaduc', 'FePreferCons')),
+          disponible:          parseNum(col(r, 'Disponible', 'CantidadDisp', 'Libre utilización', 'Libre utilizacion')),
+          meses_vigencia_lote: parseNum(col(r, 'Meses vigencia lote')),
+          fuente:              'corta_caducidad',
+        })
+      }
+
+      if (allRows.length === 0) {
+        toast.error('No se encontraron filas válidas en la hoja Corta caducidad.')
+        setLoading(false); return
+      }
+
+      // Reemplazar SOLO registros con fuente='corta_caducidad'
+      setProgress('Eliminando corta caducidad anterior...')
+      let deleted = 0
+      while (true) {
+        const { data: chunk } = await supabase.from('crm_inventory')
+          .select('id').eq('fuente', 'corta_caducidad').limit(500)
+        if (!chunk || chunk.length === 0) break
+        await supabase.from('crm_inventory').delete().in('id', chunk.map(r => r.id))
+        deleted += chunk.length
+        setProgress(`Eliminando anteriores... ${deleted}`)
+      }
+      await new Promise(r => setTimeout(r, 600))
+
+      const BATCH = 300
+      let inserted = 0
+      for (let i = 0; i < allRows.length; i += BATCH) {
+        setProgress(`Insertando... ${Math.min(i + BATCH, allRows.length)} / ${allRows.length}`)
+        const { error } = await supabase.from('crm_inventory').insert(allRows.slice(i, i + BATCH))
+        if (error) { toast.error(error.message); setLoading(false); return }
+        inserted += Math.min(BATCH, allRows.length - i)
+        if (i + BATCH < allRows.length) await new Promise(r => setTimeout(r, 200))
+      }
+
+      setCount({ inserted, deleted })
+      setProgress('')
+      toast.success(`${inserted} lotes de corta caducidad cargados`)
+    } catch (e: any) {
+      toast.error('Error: ' + (e?.message ?? ''))
+      console.error(e)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h2 className="font-semibold text-gray-800">⏳ Corta caducidad (lotes)</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Archivo con varias pestañas: se extrae automáticamente la hoja <strong>Corta caducidad</strong>
+            con el desglose por material, lote, caducidad y almacén.
+          </p>
+        </div>
+        {count && (
+          <span className="bg-amber-100 text-amber-700 text-xs px-3 py-1 rounded-full font-medium whitespace-nowrap">
+            ⏳ {count.inserted} lotes
+          </span>
+        )}
+      </div>
+      {progress && (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+          <p className="text-xs text-amber-700 font-medium">{progress}</p>
+        </div>
+      )}
+      <button onClick={() => inputRef.current?.click()} disabled={loading}
+        className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50">
+        {loading ? 'Procesando...' : 'Subir corta caducidad'}
+      </button>
+      <input ref={inputRef} type="file" className="hidden" accept=".xlsx,.xls"
+        onChange={e => {
+          const f = e.target.files?.[0]
+          if (f) handleFile(f)
+          if (inputRef.current) inputRef.current.value = ''
+        }} />
+      <div className="mt-4 text-xs text-gray-500 space-y-1">
+        <p><strong>Columnas esperadas:</strong> Material · Lote · Fecha de Caducidad · Centro · Almacén · Disponible · Meses vigencia lote</p>
       </div>
     </div>
   )
