@@ -191,13 +191,13 @@ export default function TaskDetailPage() {
   const docAttachments   = attachments.filter(a => !isImage(a.url ?? ''))
 
   return (
-    <div className="max-w-6xl mx-auto pb-8">
+    <div className="pb-8">
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
 
-      {/* Volver */}
+      {/* Volver — solo en mobile, en desktop la lista está siempre visible a la izquierda */}
       <button onClick={() => nav('/tasks')}
-        className="text-sm text-gray-400 hover:text-gray-600 mb-3 flex items-center gap-1 min-h-[44px]">
-        Volver
+        className="lg:hidden text-sm text-gray-400 hover:text-gray-600 mb-3 flex items-center gap-1 min-h-[44px]">
+        ← Volver a la lista
       </button>
 
       {/* Banner vencido */}
@@ -302,9 +302,9 @@ export default function TaskDetailPage() {
             </div>
 
             {task.description && (
-              <p className="text-sm text-gray-600 mb-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
-                {task.description}
-              </p>
+              <div className="text-sm text-gray-600 mb-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100 whitespace-pre-wrap break-words">
+                {renderComment(task.description)}
+              </div>
             )}
             {task.requested_by && (
               <p className="text-xs text-gray-400 mb-4">

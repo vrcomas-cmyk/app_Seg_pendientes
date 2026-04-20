@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
-import TaskListPage from './pages/TaskListPage'
+import TasksLayout from './pages/TasksLayout'
 import NewTaskPage from './pages/NewTaskPage'
 import TaskDetailPage from './pages/TaskDetailPage'
 import ProfilePage from './pages/ProfilePage'
@@ -48,7 +48,6 @@ export default function App() {
       setSession(data.session); setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      // Solo cerrar sesión si es un sign-out explícito, no por error de refresh
       if (event === 'SIGNED_OUT') { setSession(null); return }
       if (s) setSession(s)
     })
@@ -68,9 +67,14 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/tasks" replace />} />
         <Route path="/dashboard" element={<Navigate to="/tasks" replace />} />
-        <Route path="/tasks" element={<TaskListPage />} />
-        <Route path="/tasks/new" element={<NewTaskPage />} />
-        <Route path="/tasks/:id" element={<TaskDetailPage />} />
+
+        {/* /tasks con split view: lista izquierda + detalle derecha */}
+        <Route path="/tasks" element={<TasksLayout />}>
+          <Route index element={null /* placeholder lo renderiza TasksLayout */} />
+          <Route path="new" element={<NewTaskPage />} />
+          <Route path=":id" element={<TaskDetailPage />} />
+        </Route>
+
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/crm" element={<RouteGuard module="crm"><CrmListPage /></RouteGuard>} />
         <Route path="/crm/import" element={<CrmImportPage />} />
