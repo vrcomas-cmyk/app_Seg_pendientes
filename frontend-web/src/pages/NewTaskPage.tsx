@@ -37,25 +37,233 @@ interface StepDraft {
   description: string
   due_date: string
   assigned_to: string
+  imagePaths: string[]
 }
 
 interface AttDraft {
-  path: string       // ruta en el bucket "attachments"
-  url: string        // URL pública
-  name: string       // nombre original
+  path: string
+  url: string
+  name: string
   type: 'image' | 'file'
   size_kb: number
   mime: string
 }
 
+// ============================================================
+// StepRow
+// ============================================================
+
+interface StepRowProps {
+  step: StepDraft
+  index: number
+  total: number
+  isEditing: boolean
+  showTitleError: boolean
+  taskId: string
+  onStartEdit: () => void
+  onCollapse: () => void
+  onDiscard: () => void
+  onSaveAndNew: () => void
+  onUpdate: (patch: Partial<StepDraft>) => void
+  onRemove: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onImageUploaded: (path: string) => void
+}
+
+function StepRow({
+  step, index, total, isEditing, showTitleError, taskId,
+  onStartEdit, onCollapse, onDiscard, onSaveAndNew,
+  onUpdate, onRemove, onMoveUp, onMoveDown, onImageUploaded,
+}: StepRowProps) {
+  const titleRef = useRef<HTMLInputElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isEditing) {
+      requestAnimationFrame(() => titleRef.current?.focus())
+    }
+  }, [isEditing])
+
+  useEffect(() => {
+    if (!isEditing) return
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        onCollapse()
+      }
+    }
+    const t = setTimeout(() => document.addEventListener('mousedown', handler), 50)
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', handler) }
+  }, [isEditing, onCollapse])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement
+    const isTitleInput = target === titleRef.current
+
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      onSaveAndNew()
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey && isTitleInput) {
+      e.preventDefault()
+      onCollapse()
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      const isEmpty = !step.title.trim() && !step.description.trim()
+        && !step.due_date && !step.assigned_to.trim()
+      if (isEmpty) onDiscard()
+      else onCollapse()
+    }
+  }
+
+  const imageCount = (step.description.match(/!\[.*?\]\(.*?\)/g) ?? []).length
+  const isOverdue = step.due_date && step.due_date < new Date().toISOString().split('T')[0]
+
+  if (!isEditing) {
+    return (
+      <div className="border border-gray-200 rounded-xl bg-white hover:border-gray-300 transition group">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <div className="flex flex-col gap-0.5 flex-shrink-0">
+            <button type="button" onClick={onMoveUp} disabled={index === 0}
+              className="w-5 h-4 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
+              title="Subir">
+              ▲
+            </button>
+            <button type="button" onClick={onMoveDown} disabled={index === total - 1}
+              className="w-5 h-4 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
+              title="Bajar">
+              ▼
+            </button>
+          </div>
+
+          <span className="text-xs text-gray-400 font-semibold w-5 flex-shrink-0">
+            {index + 1}.
+          </span>
+
+          <button type="button" onClick={onStartEdit}
+            className="flex-1 min-w-0 text-left">
+            <p className="text-sm font-medium text-gray-800 truncate">
+              {step.title || <span className="text-gray-400 italic">Sin título</span>}
+            </p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              {step.assigned_to && (
+                <span className="text-xs text-gray-400">👤 {step.assigned_to}</span>
+              )}
+              {step.due_date && (
+                <span className={`text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                  📅 {step.due_date}
+                </span>
+              )}
+              {imageCount > 0 && (
+                <span className="text-xs text-teal-600">🖼 {imageCount}</span>
+              )}
+              {step.description && !imageCount && (
+                <span className="text-xs text-gray-400 truncate max-w-[12rem]">
+                  {step.description.slice(0, 40)}{step.description.length > 40 ? '…' : ''}
+                </span>
+              )}
+            </div>
+          </button>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button type="button" onClick={onStartEdit}
+              className="text-xs text-gray-400 hover:text-teal-600 px-2 py-1 rounded hover:bg-teal-50"
+              title="Editar">
+              ✎
+            </button>
+            <button type="button" onClick={onRemove}
+              className="text-xs text-gray-300 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50"
+              title="Eliminar">
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={wrapperRef} onKeyDown={handleKeyDown}
+      className="border-2 border-teal-300 rounded-xl bg-teal-50/30 p-3 space-y-2 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-teal-700 font-semibold w-5 flex-shrink-0">
+          {index + 1}.
+        </span>
+        <input
+          ref={titleRef}
+          className={`flex-1 border rounded-lg px-3 py-2 text-sm outline-none bg-white ${
+            showTitleError ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-teal-400'
+          }`}
+          placeholder="Título del paso *"
+          value={step.title}
+          onChange={e => onUpdate({ title: e.target.value })} />
+        <button type="button" onClick={onRemove}
+          className="text-xs text-gray-400 hover:text-red-500 px-2 py-2 rounded hover:bg-red-50 flex-shrink-0"
+          title="Eliminar paso">
+          ✕
+        </button>
+      </div>
+
+      {showTitleError && (
+        <p className="text-xs text-red-500 ml-7">
+          Ponle un título al paso antes de continuar.
+        </p>
+      )}
+
+      <div className="ml-7 space-y-2">
+        <DescriptionEditor
+          value={step.description}
+          onChange={v => onUpdate({ description: v })}
+          folderId={`${taskId}/steps/${step.tmpId}`}
+          placeholder="Detalle o pega capturas con Ctrl+V... (opcional)"
+          rows={2}
+          onImageUploaded={onImageUploaded}
+        />
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">Fecha límite</label>
+            <input type="date"
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
+              value={step.due_date}
+              onChange={e => onUpdate({ due_date: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">Responsable</label>
+            <input
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
+              placeholder="Nombre o área"
+              value={step.assigned_to}
+              onChange={e => onUpdate({ assigned_to: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+          <p className="text-[10px] text-gray-400">
+            <kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px]">Enter</kbd> guardar · <kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px]">Ctrl+Enter</kbd> nuevo · <kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px]">Esc</kbd> cerrar
+          </p>
+          <button type="button" onClick={onCollapse}
+            className="bg-teal-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-teal-700">
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// NewTaskPage
+// ============================================================
+
 export default function NewTaskPage() {
   const nav = useNavigate()
   const { createEvent, connectGoogle } = useCalendar()
-
-  // Pre-generar id del task para poder usarlo como carpeta desde el principio
   const [taskId] = useState(() => crypto.randomUUID())
 
-  // Datos principales
   const [form, setForm] = useState({
     requested_by: '',
     title: '',
@@ -64,20 +272,20 @@ export default function NewTaskPage() {
     due_date: suggestDate('media'),
   })
 
-  // Sugerencias de solicitante
   const [solicitantes, setSolicitantes] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const solicitanteBoxRef = useRef<HTMLDivElement>(null)
 
-  // Subtareas
   const [steps, setSteps] = useState<StepDraft[]>([])
+  const [editingStepId, setEditingStepId] = useState<string | null>(null)
+  const [titleErrorId, setTitleErrorId] = useState<string | null>(null)
+  const [stepsExpanded, setStepsExpanded] = useState(false)
 
-  // Adjuntos
   const [attachments, setAttachments] = useState<AttDraft[]>([])
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Evento de calendario
   const [calEnabled, setCalEnabled] = useState(false)
   const [eventDate, setEventDate] = useState(form.due_date)
   const [eventTime, setEventTime] = useState('09:00')
@@ -85,10 +293,8 @@ export default function NewTaskPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { setSolicitantes(loadSolicitantes()) }, [])
-
   useEffect(() => { setEventDate(form.due_date) }, [form.due_date])
 
-  // Cerrar dropdown al hacer click fuera
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (solicitanteBoxRef.current && !solicitanteBoxRef.current.contains(e.target as Node)) {
@@ -102,17 +308,98 @@ export default function NewTaskPage() {
   const handlePriority = (p: string) =>
     setForm(f => ({ ...f, priority: p, due_date: suggestDate(p) }))
 
-  // ---- Subtareas ----
-  const addStep = () => setSteps(s => [...s, {
-    tmpId: crypto.randomUUID(),
-    title: '', description: '', due_date: '', assigned_to: '',
-  }])
-  const updateStep = (tmpId: string, patch: Partial<StepDraft>) =>
-    setSteps(s => s.map(st => st.tmpId === tmpId ? { ...st, ...patch } : st))
-  const removeStep = (tmpId: string) =>
-    setSteps(s => s.filter(st => st.tmpId !== tmpId))
+  // ===== Subtareas =====
 
-  // ---- Adjuntos ----
+  const tryCollapseEditing = (): boolean => {
+    if (!editingStepId) return true
+    const current = steps.find(s => s.tmpId === editingStepId)
+    if (!current) { setEditingStepId(null); setTitleErrorId(null); return true }
+    if (!current.title.trim()) {
+      setTitleErrorId(editingStepId)
+      return false
+    }
+    setEditingStepId(null)
+    setTitleErrorId(null)
+    return true
+  }
+
+  const addStep = () => {
+    if (!tryCollapseEditing()) {
+      toast.error('Completa el paso actual antes de agregar uno nuevo')
+      return
+    }
+    const newStep: StepDraft = {
+      tmpId: crypto.randomUUID(),
+      title: '', description: '', due_date: '', assigned_to: '',
+      imagePaths: [],
+    }
+    setSteps(s => [newStep, ...s])
+    setEditingStepId(newStep.tmpId)
+    setStepsExpanded(true)
+  }
+
+  const updateStep = (tmpId: string, patch: Partial<StepDraft>) => {
+    setSteps(s => s.map(st => st.tmpId === tmpId ? { ...st, ...patch } : st))
+    if (titleErrorId === tmpId && patch.title !== undefined && patch.title.trim()) {
+      setTitleErrorId(null)
+    }
+  }
+
+  const removeStep = async (tmpId: string) => {
+    const step = steps.find(s => s.tmpId === tmpId)
+    if (step && step.imagePaths.length > 0) {
+      await supabase.storage.from('attachments').remove(step.imagePaths).catch(() => {})
+    }
+    setSteps(s => s.filter(st => st.tmpId !== tmpId))
+    if (editingStepId === tmpId) setEditingStepId(null)
+    if (titleErrorId === tmpId) setTitleErrorId(null)
+  }
+
+  const discardStep = (tmpId: string) => {
+    setSteps(s => s.filter(st => st.tmpId !== tmpId))
+    if (editingStepId === tmpId) setEditingStepId(null)
+    if (titleErrorId === tmpId) setTitleErrorId(null)
+  }
+
+  const moveStep = (tmpId: string, direction: -1 | 1) => {
+    setSteps(s => {
+      const idx = s.findIndex(st => st.tmpId === tmpId)
+      if (idx < 0) return s
+      const newIdx = idx + direction
+      if (newIdx < 0 || newIdx >= s.length) return s
+      const copy = [...s]
+      ;[copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]]
+      return copy
+    })
+  }
+
+  const saveAndNew = (tmpId: string) => {
+    const current = steps.find(s => s.tmpId === tmpId)
+    if (current && !current.title.trim()) {
+      setTitleErrorId(tmpId)
+      return
+    }
+    setEditingStepId(null)
+    setTitleErrorId(null)
+    setTimeout(() => {
+      const newStep: StepDraft = {
+        tmpId: crypto.randomUUID(),
+        title: '', description: '', due_date: '', assigned_to: '',
+        imagePaths: [],
+      }
+      setSteps(s => [newStep, ...s])
+      setEditingStepId(newStep.tmpId)
+    }, 0)
+  }
+
+  const addImagePathToStep = (tmpId: string, path: string) => {
+    setSteps(s => s.map(st =>
+      st.tmpId === tmpId ? { ...st, imagePaths: [...st.imagePaths, path] } : st
+    ))
+  }
+
+  // ===== Adjuntos =====
+
   const uploadAttachmentFile = async (file: File) => {
     setUploadingFile(true)
     const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase()
@@ -139,43 +426,56 @@ export default function NewTaskPage() {
     e.target.value = ''
   }
 
+  const openFilePicker = () => {
+    setAttachmentsExpanded(true)
+    fileInputRef.current?.click()
+  }
+
   const removeAttachment = async (att: AttDraft) => {
-    // Eliminar también del storage para no dejar basura
     await supabase.storage.from('attachments').remove([att.path]).catch(() => {})
     setAttachments(prev => prev.filter(a => a.path !== att.path))
   }
 
-  // ---- Limpiar uploads si el usuario cancela sin guardar ----
+  // ===== Cancelar =====
+
   const cleanupUploads = async () => {
-    const paths = attachments.map(a => a.path)
-    // Las imágenes de la descripción ya quedaron referenciadas en el markdown,
-    // si se cancela se borran también explícitamente abajo en handleCancel.
-    if (paths.length > 0) await supabase.storage.from('attachments').remove(paths).catch(() => {})
+    const allPaths: string[] = []
+    allPaths.push(...attachments.map(a => a.path))
+    for (const step of steps) allPaths.push(...step.imagePaths)
+    const descMatches = Array.from(form.description.matchAll(/!\[.*?\]\(.*?\/attachments\/(.+?)\)/g))
+    allPaths.push(...descMatches.map(m => m[1].split('?')[0]))
+    if (allPaths.length > 0) await supabase.storage.from('attachments').remove(allPaths).catch(() => {})
   }
 
   const handleCancel = async () => {
-    if (attachments.length === 0 && !form.description && !form.title) {
-      nav('/tasks'); return
-    }
+    const hasContent = attachments.length > 0 || steps.length > 0
+      || form.description.trim() || form.title.trim() || form.requested_by.trim()
+    if (!hasContent) { nav('/tasks'); return }
     if (!window.confirm('¿Descartar este pendiente? Se eliminarán adjuntos e imágenes cargadas.')) return
     await cleanupUploads()
-    // Borrar también capturas de descripción
-    const descMatches = Array.from(form.description.matchAll(/!\[.*?\]\(.*?\/attachments\/(.+?)\)/g))
-    const descPaths = descMatches.map(m => m[1].split('?')[0])
-    if (descPaths.length > 0) await supabase.storage.from('attachments').remove(descPaths).catch(() => {})
     nav('/tasks')
   }
 
-  // ---- Guardar todo ----
+  // ===== Guardar =====
+
   const handleSubmit = async () => {
     if (!form.requested_by.trim()) return toast.error('Quién lo solicita es obligatorio')
     if (!form.title.trim()) return toast.error('El título es obligatorio')
+
+    if (!tryCollapseEditing()) {
+      toast.error('Completa el paso en edición o elimínalo antes de guardar')
+      return
+    }
+    const invalidSteps = steps.filter(s => !s.title.trim())
+    if (invalidSteps.length > 0) {
+      toast.error(`Hay ${invalidSteps.length} paso(s) sin título. Revisa o elimínalos.`)
+      return
+    }
 
     setLoading(true)
     const user = await getCachedUser()
 
     try {
-      // 1. Crear el task con el id pre-generado
       const { error: taskErr } = await supabase.from('tasks').insert({
         id: taskId,
         title: form.title.trim(),
@@ -187,10 +487,8 @@ export default function NewTaskPage() {
       })
       if (taskErr) throw new Error('No se pudo crear el pendiente: ' + taskErr.message)
 
-      // 2. Insertar subtareas (si hay)
-      const validSteps = steps.filter(s => s.title.trim())
-      if (validSteps.length > 0) {
-        const stepRows = validSteps.map((s, idx) => ({
+      if (steps.length > 0) {
+        const stepRows = steps.map((s, idx) => ({
           task_id: taskId,
           title: s.title.trim(),
           description: s.description.trim() || null,
@@ -203,14 +501,12 @@ export default function NewTaskPage() {
         if (stepsErr) console.error('Error insertando pasos:', stepsErr.message)
       }
 
-      // 3. Insertar adjuntos en la tabla
       if (attachments.length > 0) {
         const attRows = attachments.map(a => ({
           task_id: taskId,
           url: a.url,
           name: a.name,
           type: a.type,
-          // columnas del backend — se incluyen por si el esquema las requiere
           filename: a.name,
           file_url: a.url,
           file_path: a.path,
@@ -223,7 +519,6 @@ export default function NewTaskPage() {
         if (attErr) console.error('Error insertando adjuntos:', attErr.message)
       }
 
-      // 4. Evento de calendario
       if (calEnabled) {
         const result = await createEvent(taskId, eventDate, eventTime)
         if (result.needsAuth) {
@@ -236,9 +531,7 @@ export default function NewTaskPage() {
         }
       }
 
-      // 5. Guardar solicitante en sugerencias
       saveSolicitante(form.requested_by)
-
       toast.success('Pendiente creado')
       nav(`/tasks/${taskId}`)
     } catch (err: any) {
@@ -252,6 +545,8 @@ export default function NewTaskPage() {
     (s.toLowerCase().includes(form.requested_by.toLowerCase()) &&
      s.toLowerCase() !== form.requested_by.toLowerCase())
   ).slice(0, 6)
+
+  // ===== Render =====
 
   return (
     <div className="max-w-3xl mx-auto pb-12">
@@ -267,7 +562,7 @@ export default function NewTaskPage() {
         {/* ======= DATOS BÁSICOS ======= */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-4">
 
-          {/* 1. Solicitante (con sugerencias) */}
+          {/* Solicitante */}
           <div ref={solicitanteBoxRef} className="relative">
             <label className="text-xs text-gray-500 mb-1 block">
               Quién lo solicita <span className="text-red-500">*</span>
@@ -296,7 +591,7 @@ export default function NewTaskPage() {
             )}
           </div>
 
-          {/* 2. Título */}
+          {/* Título */}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">
               Título <span className="text-red-500">*</span>
@@ -308,25 +603,23 @@ export default function NewTaskPage() {
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
           </div>
 
-          {/* 3. Descripción (con screenshots) */}
+          {/* Descripción */}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">
               Descripción
-              <span className="ml-2 text-gray-400 font-normal">
-                · soporta capturas con Ctrl+V
-              </span>
+              <span className="ml-2 text-gray-400 font-normal">· Ctrl+V para capturas</span>
             </label>
             <DescriptionEditor
               value={form.description}
               onChange={v => setForm(f => ({ ...f, description: v }))}
               folderId={taskId}
               isDraft={false}
-              placeholder="Detalle opcional. Pega capturas con Ctrl+V, arrastra imágenes o usa el botón 📎."
+              placeholder="Detalle opcional. Pega capturas con Ctrl+V, arrastra imágenes o usa 📎."
               rows={4}
             />
           </div>
 
-          {/* 4. Prioridad y fecha */}
+          {/* Prioridad y fecha */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-gray-500 mb-2 block">Prioridad</label>
@@ -355,81 +648,95 @@ export default function NewTaskPage() {
           </div>
         </div>
 
-        {/* ======= SUBTAREAS / PASOS ======= */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">
-              Subtareas / Pasos
+        {/* ======= SUBTAREAS (COLAPSABLE) ======= */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 sm:py-4 gap-2">
+            <button type="button"
+              onClick={() => setStepsExpanded(v => !v)}
+              className="flex items-center gap-2 text-left flex-1 min-w-0 min-h-[32px]">
+              <span className={`text-gray-400 text-xs transition-transform ${stepsExpanded ? 'rotate-90' : ''}`}>
+                ▶
+              </span>
+              <h2 className="text-sm font-semibold text-gray-700">
+                Subtareas / Pasos
+              </h2>
               {steps.length > 0 && (
-                <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                   {steps.length}
                 </span>
               )}
-            </h2>
+              {!stepsExpanded && steps.length === 0 && (
+                <span className="text-xs text-gray-400">— opcional</span>
+              )}
+            </button>
             <button type="button" onClick={addStep}
-              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700">
+              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 flex-shrink-0">
               + Agregar paso
             </button>
           </div>
 
-          {steps.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-6 border-2 border-dashed border-gray-100 rounded-lg">
-              Opcional. Agrega subtareas que desglosen el pendiente.
-            </p>
+          {stepsExpanded && (
+            <div className="px-5 pb-5 border-t border-gray-100 pt-3 space-y-2">
+              {steps.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-6 border-2 border-dashed border-gray-100 rounded-lg">
+                  Agrega subtareas que desglosen el pendiente.
+                </p>
+              )}
+              {steps.map((s, idx) => (
+                <StepRow
+                  key={s.tmpId}
+                  step={s}
+                  index={idx}
+                  total={steps.length}
+                  isEditing={editingStepId === s.tmpId}
+                  showTitleError={titleErrorId === s.tmpId}
+                  taskId={taskId}
+                  onStartEdit={() => {
+                    if (editingStepId && editingStepId !== s.tmpId) {
+                      if (!tryCollapseEditing()) {
+                        toast.error('Completa el paso actual primero')
+                        return
+                      }
+                    }
+                    setEditingStepId(s.tmpId)
+                  }}
+                  onCollapse={() => tryCollapseEditing()}
+                  onDiscard={() => discardStep(s.tmpId)}
+                  onSaveAndNew={() => saveAndNew(s.tmpId)}
+                  onUpdate={patch => updateStep(s.tmpId, patch)}
+                  onRemove={() => removeStep(s.tmpId)}
+                  onMoveUp={() => moveStep(s.tmpId, -1)}
+                  onMoveDown={() => moveStep(s.tmpId, 1)}
+                  onImageUploaded={path => addImagePathToStep(s.tmpId, path)}
+                />
+              ))}
+            </div>
           )}
-
-          <div className="space-y-2">
-            {steps.map((s, idx) => (
-              <div key={s.tmpId} className="border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50">
-                <div className="flex items-start gap-2">
-                  <span className="text-xs text-gray-400 font-semibold mt-2 w-5 flex-shrink-0">
-                    {idx + 1}.
-                  </span>
-                  <input
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 bg-white"
-                    placeholder="Título del paso *"
-                    value={s.title}
-                    onChange={e => updateStep(s.tmpId, { title: e.target.value })} />
-                  <button type="button" onClick={() => removeStep(s.tmpId)}
-                    className="text-xs text-gray-300 hover:text-red-400 px-2 py-2 rounded-lg hover:bg-red-50">
-                    ✕
-                  </button>
-                </div>
-                <textarea
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-teal-400 bg-white h-14 resize-none ml-7"
-                  style={{ width: 'calc(100% - 1.75rem)' }}
-                  placeholder="Descripción (opcional)"
-                  value={s.description}
-                  onChange={e => updateStep(s.tmpId, { description: e.target.value })} />
-                <div className="grid grid-cols-2 gap-2 ml-7" style={{ width: 'calc(100% - 1.75rem)' }}>
-                  <input type="date"
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
-                    value={s.due_date}
-                    onChange={e => updateStep(s.tmpId, { due_date: e.target.value })} />
-                  <input
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-teal-400 bg-white"
-                    placeholder="Responsable"
-                    value={s.assigned_to}
-                    onChange={e => updateStep(s.tmpId, { assigned_to: e.target.value })} />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
-        {/* ======= ADJUNTOS ======= */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">
-              Archivos adjuntos
+        {/* ======= ADJUNTOS (COLAPSABLE) ======= */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 sm:py-4 gap-2">
+            <button type="button"
+              onClick={() => setAttachmentsExpanded(v => !v)}
+              className="flex items-center gap-2 text-left flex-1 min-w-0 min-h-[32px]">
+              <span className={`text-gray-400 text-xs transition-transform ${attachmentsExpanded ? 'rotate-90' : ''}`}>
+                ▶
+              </span>
+              <h2 className="text-sm font-semibold text-gray-700">
+                Archivos adjuntos
+              </h2>
               {attachments.length > 0 && (
-                <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                   {attachments.length}
                 </span>
               )}
-            </h2>
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
-              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+              {!attachmentsExpanded && attachments.length === 0 && (
+                <span className="text-xs text-gray-400">— opcional</span>
+              )}
+            </button>
+            <button type="button" onClick={openFilePicker} disabled={uploadingFile}
+              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50 flex-shrink-0">
               {uploadingFile ? 'Subiendo...' : '+ Subir archivo'}
             </button>
             <input ref={fileInputRef} type="file" className="hidden" multiple
@@ -437,40 +744,44 @@ export default function NewTaskPage() {
               onChange={handleFileInput} />
           </div>
 
-          {attachments.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-6 border-2 border-dashed border-gray-100 rounded-lg">
-              Opcional. Sube imágenes, PDFs u otros archivos de referencia.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {attachments.map(a => (
-                <div key={a.path}
-                  className="flex items-center justify-between gap-3 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {a.type === 'image' ? (
-                      <img src={a.url} alt={a.name}
-                        className="w-10 h-10 object-cover rounded border border-gray-200 flex-shrink-0" />
-                    ) : (
-                      <span className="w-10 h-10 flex items-center justify-center bg-white rounded border border-gray-200 text-lg flex-shrink-0">
-                        📄
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-700 truncate">{a.name}</p>
-                      <p className="text-xs text-gray-400">{a.size_kb} KB</p>
+          {attachmentsExpanded && (
+            <div className="px-5 pb-5 border-t border-gray-100 pt-3">
+              {attachments.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6 border-2 border-dashed border-gray-100 rounded-lg">
+                  Sube imágenes, PDFs u otros archivos de referencia.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {attachments.map(a => (
+                    <div key={a.path}
+                      className="flex items-center justify-between gap-3 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {a.type === 'image' ? (
+                          <img src={a.url} alt={a.name}
+                            className="w-10 h-10 object-cover rounded border border-gray-200 flex-shrink-0" />
+                        ) : (
+                          <span className="w-10 h-10 flex items-center justify-center bg-white rounded border border-gray-200 text-lg flex-shrink-0">
+                            📄
+                          </span>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate">{a.name}</p>
+                          <p className="text-xs text-gray-400">{a.size_kb} KB</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => removeAttachment(a)}
+                        className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 flex-shrink-0">
+                        Eliminar
+                      </button>
                     </div>
-                  </div>
-                  <button type="button" onClick={() => removeAttachment(a)}
-                    className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 flex-shrink-0">
-                    Eliminar
-                  </button>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
 
-        {/* ======= EVENTO DE CALENDARIO ======= */}
+        {/* ======= CALENDARIO ======= */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={calEnabled}
