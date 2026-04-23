@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -51,10 +52,35 @@ export default function CrmPipelinePage() {
   const [searchParams] = useSearchParams()
   const highlightId = searchParams.get('id')
   const highlightRef = useRef<HTMLTableRowElement>(null)
+  const queryClient = useQueryClient()
 
-  // Data
-  const [ventas, setVentas] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  // Data — cargado vía useQuery para cache y refetch automático
+  const VENTAS_KEY = ['crm-ventas'] as const
+  const { data: ventas = [], isLoading: loading, refetch } = useQuery<any[]>({
+    queryKey: VENTAS_KEY,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('crm_offers')
+        .select(`
+          id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta, task_id,
+          client_id, folio_pedido, gpo_cliente, gpo_vendedor,
+          crm_clients(id, solicitante, razon_social),
+          crm_offer_items(
+            id, material, descripcion,
+            cantidad_aceptada, cantidad_ofertada, precio_aceptado, precio_oferta,
+            numero_pedido, numero_factura, fecha_factura, estatus, lote, caducidad, um,
+            cedis_request_id, folio_entrega_salida, fecha_entrega_salida,
+            lotes, aceptado
+          )
+        `)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+  })
+
+  // Helper para actualizar localmente (optimistic updates)
+  const patchVentas = (fn: (old: any[]) => any[]) =>
+    queryClient.setQueryData(VENTAS_KEY, (old: any[] = []) => fn(old))
 
   // Filters
   const [filterEtapa, setFilterEtapa] = useState(() => highlightId ? '' : 'activas')
@@ -112,28 +138,7 @@ export default function CrmPipelinePage() {
   const [savingFolio, setSavingFolio] = useState(false)
 
   // ── Load ───────────────────────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setLoading(true)
-    const { data } = await supabase
-      .from('crm_offers')
-      .select(`
-        id, tipo, tipo_negocio, etapa, estatus, notas, created_at, fecha_venta, task_id,
-        client_id, folio_pedido, gpo_cliente, gpo_vendedor,
-        crm_clients(id, solicitante, razon_social),
-        crm_offer_items(
-          id, material, descripcion,
-          cantidad_aceptada, cantidad_ofertada, precio_aceptado, precio_oferta,
-          numero_pedido, numero_factura, fecha_factura, estatus, lote, caducidad, um,
-          cedis_request_id, folio_entrega_salida, fecha_entrega_salida,
-          lotes, aceptado
-        )
-      `)
-      .order('created_at', { ascending: false })
-    setVentas(data ?? [])
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { load() }, [load])
+  // (manejado por useQuery arriba; refetch() reemplaza a load())
 
   useEffect(() => {
     if (highlightId && highlightRef.current)
@@ -148,7 +153,7 @@ export default function CrmPipelinePage() {
     supabase.from('tasks').select('id, title, description, priority, due_date, status')
       .eq('id', offer.task_id).single()
       .then(({ data }) => {
-        if (data) setVentas(p => p.map(v => v.id === expandedId ? { ...v, _task: data } : v))
+        if (data) patchVentas((p: any[]) => p.map(v => v.id === expandedId ? { ...v, _task: data } : v))
       })
   }, [expandedId, ventas])
 
@@ -196,14 +201,14 @@ export default function CrmPipelinePage() {
       return
     }
     await supabase.from('crm_offers').update({ etapa: newEtapa }).eq('id', v.id)
-    setVentas(p => p.map(x => x.id === v.id ? { ...x, etapa: newEtapa } : x))
+    patchVentas((p: any[]) => p.map(x => x.id === v.id ? { ...x, etapa: newEtapa } : x))
     toast.success(`Etapa → ${newEtapa}`)
   }
 
   // ── Folio SAP per offer ────────────────────────────────────────────────────
   const saveOfferFolio = async (offerId: string, val: string) => {
     await supabase.from('crm_offers').update({ folio_pedido: val || null }).eq('id', offerId)
-    setVentas(p => p.map(v => v.id === offerId ? { ...v, folio_pedido: val || null } : v))
+    patchVentas((p: any[]) => p.map(v => v.id === offerId ? { ...v, folio_pedido: val || null } : v))
   }
 
   // ── Save item fields inline ────────────────────────────────────────────────
@@ -222,7 +227,7 @@ export default function CrmPipelinePage() {
     if (Object.keys(updates).length === 0) { setSavingItems(p => ({ ...p, [offerId]: false })); return }
     const { error } = await supabase.from('crm_offer_items').update(updates).eq('id', itemId)
     if (error) { toast.error(error.message) } else {
-      setVentas(p => p.map(v => v.id !== offerId ? v : {
+      patchVentas((p: any[]) => p.map(v => v.id !== offerId ? v : {
         ...v, crm_offer_items: (v.crm_offer_items ?? []).map((i:any) =>
           i.id !== itemId ? i : { ...i, ...updates }
         )
@@ -277,7 +282,7 @@ export default function CrmPipelinePage() {
       toast.success('Solicitud CEDIS creada')
       setItemCedisOpen(p => ({ ...p, [item.id]: false }))
       setItemDisp(p => ({ ...p, [item.id]: 'solicitar_cedis' }))
-      load()
+      refetch()
     }
     setSavingCedis(p => ({ ...p, [item.id]: false }))
   }
@@ -313,7 +318,7 @@ export default function CrmPipelinePage() {
         .update({ etapa: 'cancelado' }).eq('id', archiveModal.venta.id)
       if (error) { toast.error(error.message); setSavingArchive(false); return }
       await supabase.from('crm_offer_items').update({ estatus: 'rechazado' }).eq('offer_id', archiveModal.venta.id)
-      setVentas(p => p.map(v => v.id === archiveModal.venta.id ? { ...v, etapa: 'cancelado' } : v))
+      patchVentas((p: any[]) => p.map(v => v.id === archiveModal.venta.id ? { ...v, etapa: 'cancelado' } : v))
       toast.success('Oferta archivada')
     } else {
       const factura = archiveMotivo.trim()
@@ -323,11 +328,11 @@ export default function CrmPipelinePage() {
       if (factura)
         await supabase.from('crm_offer_items')
           .update({ numero_factura: factura, estatus: 'facturado' }).eq('offer_id', archiveModal.venta.id)
-      setVentas(p => p.map(v => v.id === archiveModal.venta.id ? { ...v, etapa: 'facturado' } : v))
+      patchVentas((p: any[]) => p.map(v => v.id === archiveModal.venta.id ? { ...v, etapa: 'facturado' } : v))
       toast.success('Oferta facturada')
     }
     setArchiveModal(null); setArchiveMotivo(''); setSavingArchive(false)
-    load()
+    refetch()
   }
 
   // ── Confirm oferta→venta ───────────────────────────────────────────────────
@@ -402,7 +407,7 @@ export default function CrmPipelinePage() {
     toast.success('Oferta convertida a Venta')
     setConfirmModal(null)
     setSavingConfirm(false)
-    load()
+    refetch()
   }
 
   // ── Create & link task to offer ─────────────────────────────────────────────
@@ -422,7 +427,7 @@ export default function CrmPipelinePage() {
     if (error || !task) { toast.error(error?.message ?? 'Error'); setSavingTask(p => ({ ...p, [offerId]: false })); return }
     const { error: e2 } = await supabase.from('crm_offers').update({ task_id: task.id }).eq('id', offerId)
     if (e2) { toast.error(e2.message); setSavingTask(p => ({ ...p, [offerId]: false })); return }
-    setVentas(p => p.map(v => v.id === offerId ? { ...v, task_id: task.id, _task: task } : v))
+    patchVentas((p: any[]) => p.map(v => v.id === offerId ? { ...v, task_id: task.id, _task: task } : v))
     setTaskPanelOpen(p => ({ ...p, [offerId]: false }))
     setTaskForm(p => ({ ...p, [offerId]: {} }))
     toast.success('Pendiente creado y vinculado')
@@ -431,7 +436,7 @@ export default function CrmPipelinePage() {
 
   const completeTask = async (offerId: string, taskId: string) => {
     await supabase.from('tasks').update({ status: 'completado' }).eq('id', taskId)
-    setVentas(p => p.map(v => v.id === offerId ? { ...v, _task: { ...v._task, status: 'completado' } } : v))
+    patchVentas((p: any[]) => p.map(v => v.id === offerId ? { ...v, _task: { ...v._task, status: 'completado' } } : v))
     toast.success('Pendiente completado')
   }
 
@@ -442,10 +447,10 @@ export default function CrmPipelinePage() {
     const upd: any = { etapa: 'venta', fecha_venta: new Date().toISOString().split('T')[0] }
     if (folioInput.trim()) upd.folio_pedido = folioInput.trim()
     await supabase.from('crm_offers').update(upd).eq('id', folioModal.venta.id)
-    setVentas(p => p.map(v => v.id === folioModal.venta.id ? { ...v, ...upd } : v))
+    patchVentas((p: any[]) => p.map(v => v.id === folioModal.venta.id ? { ...v, ...upd } : v))
     setFolioModal(null); setSavingFolio(false); setFolioInput('')
     toast.success('Convertida a Venta')
-    load()
+    refetch()
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -724,7 +729,7 @@ export default function CrmPipelinePage() {
                                                       setItemDisp(p=>({...p,[item.id]:'disponible'}))
                                                       setItemEdit(item.id,'estatus','asignado_pedido')
                                                       await supabase.from('crm_offer_items').update({estatus:'asignado_pedido'}).eq('id',item.id)
-                                                      setVentas(p=>p.map(vv=>vv.id!==v.id?vv:{...vv,crm_offer_items:(vv.crm_offer_items??[]).map((i:any)=>i.id!==item.id?i:{...i,estatus:'asignado_pedido'})}))
+                                                      patchVentas((p: any[])=>p.map(vv=>vv.id!==v.id?vv:{...vv,crm_offer_items:(vv.crm_offer_items??[]).map((i:any)=>i.id!==item.id?i:{...i,estatus:'asignado_pedido'})}))
                                                     }}
                                                     className={`text-xs px-1.5 py-1 rounded border font-medium transition ${disp==='disponible'?'bg-teal-600 text-white border-teal-600':'bg-white text-gray-500 border-gray-200 hover:border-teal-300'}`}>
                                                     ✓ Disp.

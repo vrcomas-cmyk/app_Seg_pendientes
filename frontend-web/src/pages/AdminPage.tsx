@@ -4,7 +4,6 @@ import { supabase, getCachedUser } from '../lib/supabase'
 import UsersPanel from '../components/UsersPanel'
 import { parseExcelFile } from '../utils/importClients'
 import { parseCSVText, readFileAsText } from '../utils/parseCSV'
-import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
 
@@ -65,6 +64,7 @@ const readRows = async (file: File): Promise<any[]> => {
     return parseCSVText(text)
   }
   const buf = await file.arrayBuffer()
+  const XLSX = await import('xlsx')
   const wb = XLSX.read(buf, { type: 'array', cellDates: false, dense: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
   return XLSX.utils.sheet_to_json(ws, { defval: '' })
@@ -188,6 +188,7 @@ export default function AdminPage() {
             'Tels. Dest.': (r.telefonos ?? []).join(', '), 'Correos Dest.': (r.correos ?? []).join('; ') })
       } else rows.push({ ...base, Destinatario: '' })
     }
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
@@ -391,6 +392,7 @@ export default function AdminPage() {
     setLoading(true); setProgress('Leyendo archivo...')
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buf, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
@@ -429,6 +431,7 @@ export default function AdminPage() {
     setLoading(true); setProgress('Leyendo archivo...')
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buf, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })

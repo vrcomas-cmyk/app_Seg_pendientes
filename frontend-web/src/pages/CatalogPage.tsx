@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRole } from '../hooks/useRole'
-import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
 // 8 campos = 8 columnas visibles en tabla (deben coincidir exactamente)
@@ -215,6 +214,7 @@ export default function CatalogPage() {
     setUploading(true)
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buf, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })

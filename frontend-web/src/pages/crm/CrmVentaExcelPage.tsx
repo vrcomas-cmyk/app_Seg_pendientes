@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, getCachedUser } from '../../lib/supabase'
-import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
 export default function CrmVentaExcelPage() {
@@ -12,6 +11,7 @@ export default function CrmVentaExcelPage() {
 
   const handleFile = async (file: File) => {
     const buf = await file.arrayBuffer()
+    const XLSX = await import('xlsx')
     const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
     const ws = wb.Sheets[wb.SheetNames[0]]
     const data: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })

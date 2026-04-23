@@ -7,7 +7,14 @@ import App from './App'
 import './index.css'
 
 const qc = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } }
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: true,   // Refetch al volver a la pestaña (datos frescos)
+      staleTime: 30_000,            // Default: 30s frescos (override por query si hace falta)
+      gcTime: 5 * 60_000,           // Mantener en cache 5 min tras desmontar
+    }
+  }
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

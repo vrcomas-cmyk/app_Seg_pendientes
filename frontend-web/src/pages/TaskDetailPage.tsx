@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
 import FileUploader from '../components/FileUploader'
@@ -27,6 +28,7 @@ function initials(name: string) {
 export default function TaskDetailPage() {
   const { id } = useParams()
   const nav = useNavigate()
+  const queryClient = useQueryClient()
   const { connectGoogle, createEvent, rescheduleEvent, cancelEvent, loading: calLoading } = useCalendar()
   const [task, setTask] = useState<any>(null)
   const [history, setHistory] = useState<any[]>([])
@@ -92,14 +94,29 @@ export default function TaskDetailPage() {
 
   const changeStatus = async (status: string, removeCalendar: boolean) => {
     setLoading(true)
-    const user = await getCachedUser()
-    if (removeCalendar && hasCalendarEvent) await cancelEvent(id!)
-    await supabase.from('tasks').update({ status }).eq('id', id)
-    await supabase.from('task_history').insert({
-      task_id: id, comment: `Pendiente marcado como ${status}.`, created_by: user?.id
-    })
-    toast.success(`Marcado como ${status}`)
-    load(); setLoading(false)
+    try {
+      const user = await getCachedUser()
+      // Cancelar calendario primero (puede fallar si token expiró — capturamos aparte)
+      if (removeCalendar && hasCalendarEvent) {
+        try { await cancelEvent(id!) }
+        catch (e) { console.warn('No se pudo cancelar evento Calendar:', e) }
+      }
+      const { error: e1 } = await supabase.from('tasks').update({ status }).eq('id', id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('task_history').insert({
+        task_id: id, comment: `Pendiente marcado como ${status}.`, created_by: user?.id
+      })
+      if (e2) throw e2
+      toast.success(`Marcado como ${status}`)
+      // Invalidar cache del sidebar para que se refresque al instante
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      load()
+    } catch (err: any) {
+      console.error('Error cambiando estatus:', err)
+      toast.error(err?.message ?? 'No se pudo actualizar el pendiente')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleComplete = async () => {
@@ -425,11 +442,17 @@ export default function TaskDetailPage() {
                 <p className="text-xs text-gray-500 mb-2">Pegar captura</p>
                 <PasteImageUploader taskId={task.id} mode="zone"
                   onUploaded={async (url, name) => {
-                    const user = await getCachedUser()
-                    await supabase.from('attachments').insert({
-                      task_id: task.id, url, name, type: 'image', created_by: user?.id,
-                    })
-                    loadAttachments()
+                    try {
+                      const user = await getCachedUser()
+                      const { error } = await supabase.from('attachments').insert({
+                        task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                      })
+                      if (error) throw error
+                      loadAttachments()
+                    } catch (err: any) {
+                      console.error('Error guardando imagen:', err)
+                      toast.error(err?.message ?? 'No se pudo registrar la imagen')
+                    }
                   }} />
               </div>
             </div>
@@ -470,12 +493,19 @@ export default function TaskDetailPage() {
                 <PasteImageUploader taskId={task.id} mode="comment"
                   placeholder="Comentario o Ctrl+V para imagen..."
                   onComment={async (text, images) => {
-                    const user = await getCachedUser()
-                    const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
-                    await supabase.from('task_history').insert({
-                      task_id: id, comment: text + imageLinks, created_by: user?.id,
-                    })
-                    toast.success('Comentario agregado'); load()
+                    try {
+                      const user = await getCachedUser()
+                      const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
+                      const { error } = await supabase.from('task_history').insert({
+                        task_id: id, comment: text + imageLinks, created_by: user?.id,
+                      })
+                      if (error) throw error
+                      toast.success('Comentario agregado')
+                      load()
+                    } catch (err: any) {
+                      console.error('Error agregando comentario:', err)
+                      toast.error(err?.message ?? 'No se pudo agregar el comentario')
+                    }
                   }} />
               </div>
             </div>
@@ -527,22 +557,34 @@ export default function TaskDetailPage() {
               <PasteImageUploader taskId={task.id} mode="comment"
                 placeholder="Comentario o Ctrl+V para imagen..."
                 onComment={async (text, images) => {
-                  const user = await getCachedUser()
-                  const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
-                  await supabase.from('task_history').insert({
-                    task_id: id, comment: text + imageLinks,
-                    reviewed_with: reviewedWith || null, created_by: user?.id,
-                  })
-                  for (const img of images) {
-                    await supabase.from('attachments').insert({
-                      task_id: task.id, url: img.url, name: img.name,
-                      type: 'image', created_by: user?.id,
+                  try {
+                    const user = await getCachedUser()
+                    const imageLinks = images.map(i => `\n![${i.name}](${i.url})`).join('')
+                    const { error: histErr } = await supabase.from('task_history').insert({
+                      task_id: id, comment: text + imageLinks,
+                      reviewed_with: reviewedWith || null, created_by: user?.id,
                     })
+                    if (histErr) throw histErr
+                    // Batch insert (1 request) en vez de loop serial
+                    if (images.length > 0) {
+                      const rows = images.map(img => ({
+                        task_id: task.id, url: img.url, name: img.name,
+                        type: 'image', created_by: user?.id,
+                      }))
+                      const { error: attErr } = await supabase.from('attachments').insert(rows)
+                      if (attErr) {
+                        console.error('Error insertando adjuntos:', attErr)
+                        toast.error('Comentario guardado, pero algunas imágenes no se registraron')
+                      }
+                    }
+                    toast.success('Comentario agregado')
+                    setReviewedWith('')
+                    load()
+                    setHistoryLimit(p => p + 1)
+                  } catch (err: any) {
+                    console.error('Error agregando comentario:', err)
+                    toast.error(err?.message ?? 'No se pudo agregar el comentario')
                   }
-                  toast.success('Comentario agregado')
-                  setReviewedWith('')
-                  load()
-                  setHistoryLimit(p => p + 1)
                 }}
               />
               <input
@@ -596,12 +638,18 @@ export default function TaskDetailPage() {
                   <p className="text-xs text-gray-400 mb-2">Pegar captura</p>
                   <PasteImageUploader taskId={task.id} mode="zone"
                     onUploaded={async (url, name) => {
-                      const user = await getCachedUser()
-                      await supabase.from('attachments').insert({
-                        task_id: task.id, url, name, type: 'image', created_by: user?.id,
-                      })
-                      loadAttachments()
-                      toast.success('Imagen guardada')
+                      try {
+                        const user = await getCachedUser()
+                        const { error } = await supabase.from('attachments').insert({
+                          task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                        })
+                        if (error) throw error
+                        loadAttachments()
+                        toast.success('Imagen guardada')
+                      } catch (err: any) {
+                        console.error('Error guardando imagen:', err)
+                        toast.error(err?.message ?? 'No se pudo guardar la imagen')
+                      }
                     }} />
                 </div>
               </div>

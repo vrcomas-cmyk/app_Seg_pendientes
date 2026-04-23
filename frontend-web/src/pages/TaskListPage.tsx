@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 
 function daysDiff(date: string) {
@@ -40,41 +41,36 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function TaskListPage() {
   const nav = useNavigate()
-  const [tasks, setTasks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todos' | 'alta' | 'media' | 'baja' | 'completados'>('todos')
   const [search, setSearch] = useState('')
 
+  // ── Query: mis pendientes + enrich con crm_offers ─────────────────────────
+  const { data: tasks = [], isLoading: loading } = useQuery<any[]>({
+    queryKey: ['tasks', 'mine'],
+    queryFn: async () => {
+      const user = await getCachedUser()
+      if (!user) return []
+      const { data } = await supabase.from('tasks')
+        .select('*')
+        .eq('created_by', user.id)
+        .order('due_date', { ascending: true })
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const user = await getCachedUser()
-    if (!user) { setLoading(false); return }
-    const { data } = await supabase.from('tasks')
-      .select('*')
-      .eq('created_by', user.id)
-      .order('due_date', { ascending: true })
+      const taskList = data ?? []
+      if (taskList.length === 0) return taskList
 
-    // Enrich with CRM offer data for badge display
-    const taskList = data ?? []
-    if (taskList.length > 0) {
+      // Enrich con CRM offer data para mostrar badge
       const taskIds = taskList.map((t: any) => t.id)
       const { data: offers } = await supabase
         .from('crm_offers')
         .select('task_id, id, etapa, crm_clients(solicitante, razon_social)')
         .in('task_id', taskIds)
-      if (offers && offers.length > 0) {
-        const offerMap: Record<string, any> = {}
-        offers.forEach((o: any) => { if (o.task_id) offerMap[o.task_id] = o })
-        setTasks(taskList.map((t: any) => offerMap[t.id] ? { ...t, _crm_offer: offerMap[t.id] } : t))
-        setLoading(false); return
-      }
-    }
-    setTasks(taskList)
-    setLoading(false)
-  }, [])
+      if (!offers || offers.length === 0) return taskList
 
-  useEffect(() => { load() }, [load])
+      const offerMap: Record<string, any> = {}
+      offers.forEach((o: any) => { if (o.task_id) offerMap[o.task_id] = o })
+      return taskList.map((t: any) => offerMap[t.id] ? { ...t, _crm_offer: offerMap[t.id] } : t)
+    },
+  })
 
   const today = new Date(); today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]

@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, getCachedUser } from '../../lib/supabase'
 import { parseExcelFile } from '../../utils/importClients'
-import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
 function mergeUnique(a: string[], b: string[]): string[] {
@@ -178,6 +177,7 @@ export default function CrmImportPage() {
       }
     }
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
