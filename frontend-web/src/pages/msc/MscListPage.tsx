@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../../lib/supabase'
 import { useRole } from '../../hooks/useRole'
-import * as XLSX from 'xlsx'
 import type { MscSolicitud, UserProfile } from '../../types/msc'
 import { debounce } from '../../utils/debounce'
 
@@ -23,14 +23,10 @@ function formatMXN(n: number) {
 export default function MscListPage() {
   const nav = useNavigate()
   const { isAdmin, isGerente } = useRole()
-  const [solicitudes, setSolicitudes]     = useState<MscSolicitud[]>([])
-  const [loading, setLoading]             = useState(true)
   const [filterEstatus, setFilterEstatus] = useState('activas')
   const [search, setSearch]               = useState('')
   const [searchInput, setSearchInput]     = useState('') // Raw input, se debounce a search
   const [viewMode, setViewMode]           = useState<'mine'|'team'|'all'|'user'>('mine')
-  const [teamUsers, setTeamUsers]         = useState<UserProfile[]>([])
-  const [allUsers, setAllUsers]           = useState<UserProfile[]>([])
   const [selectedUser, setSelectedUser]   = useState('')
   const [showReport, setShowReport]       = useState(false)
   const [reportFilters, setReportFilters] = useState({
@@ -39,60 +35,70 @@ export default function MscListPage() {
   })
   const [downloadingReport, setDownloadingReport] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const user = await getCachedUser()
-    if (!user) { setLoading(false); return }
+  // ── Query principal: lista de solicitudes ────────────────────────────────
+  // Se re-ejecuta automáticamente cuando cambian viewMode, selectedUser o isGerente.
+  // Datos frescos 30s (default global); al volver a la pestaña se refetch en background.
+  const { data: solicitudes = [], isLoading: loading } = useQuery<MscSolicitud[]>({
+    queryKey: ['msc-solicitudes', viewMode, selectedUser, isGerente],
+    queryFn: async () => {
+      const user = await getCachedUser()
+      if (!user) return []
 
-    let query = supabase
-      .from('msc_solicitudes_resumen')
-      .select('*')
+      let query = supabase
+        .from('msc_solicitudes_resumen')
+        .select('*')
 
-    if (viewMode === 'mine') {
-      query = query.eq('created_by', user.id)
-    } else if (viewMode === 'team' && isGerente) {
+      if (viewMode === 'mine') {
+        query = query.eq('created_by', user.id)
+      } else if (viewMode === 'team' && isGerente) {
+        const { data: teamData } = await supabase
+          .from('user_teams').select('miembro_id').eq('gerente_id', user.id)
+        const memberIds = (teamData ?? []).map((t) => t.miembro_id)
+        query = query.in('created_by', [user.id, ...memberIds])
+      } else if (viewMode === 'user' && selectedUser) {
+        query = query.eq('created_by', selectedUser)
+      }
+
+      const { data } = await query
+      return (data ?? []) as MscSolicitud[]
+    },
+  })
+
+  // ── Query: miembros del equipo (solo si es gerente) ──────────────────────
+  const { data: teamUsers = [] } = useQuery<UserProfile[]>({
+    queryKey: ['msc-team-users'],
+    enabled: isGerente,
+    staleTime: 5 * 60_000, // equipo casi no cambia → cache más larga
+    queryFn: async () => {
+      const user = await getCachedUser()
+      if (!user) return []
       const { data: teamData } = await supabase
         .from('user_teams').select('miembro_id').eq('gerente_id', user.id)
       const memberIds = (teamData ?? []).map((t) => t.miembro_id)
-      query = query.in('created_by', [user.id, ...memberIds])
-    } else if (viewMode === 'user' && selectedUser) {
-      query = query.eq('created_by', selectedUser)
-    }
+      if (memberIds.length === 0) return []
+      const { data: profiles } = await supabase
+        .from('user_profiles').select('user_id, email').in('user_id', memberIds)
+      return (profiles ?? []) as UserProfile[]
+    },
+  })
 
-    const { data } = await query
-    setSolicitudes(data ?? [])
-    setLoading(false)
-  }, [viewMode, selectedUser, isGerente])
-
-  useEffect(() => { load() }, [load])
+  // ── Query: todos los usuarios (solo admin) ───────────────────────────────
+  const { data: allUsers = [] } = useQuery<UserProfile[]>({
+    queryKey: ['msc-all-users'],
+    enabled: isAdmin,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data: profiles } = await supabase
+        .from('user_profiles').select('user_id, email')
+      return (profiles ?? []) as UserProfile[]
+    },
+  })
 
   // Debounce de búsqueda
   useEffect(() => {
     const handler = debounce((q: string) => setSearch(q), 300)
     handler(searchInput)
   }, [searchInput])
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      const user = await getCachedUser()
-      if (!user) return
-      if (isGerente) {
-        const { data: teamData } = await supabase
-          .from('user_teams').select('miembro_id').eq('gerente_id', user.id)
-        const memberIds = (teamData ?? []).map((t) => t.miembro_id)
-        if (memberIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from('user_profiles').select('user_id, email').in('user_id', memberIds)
-          setTeamUsers(profiles ?? [])
-        }
-      }
-      if (isAdmin) {
-        const { data: profiles } = await supabase.from('user_profiles').select('user_id, email')
-        setAllUsers(profiles ?? [])
-      }
-    }
-    loadUsers()
-  }, [isAdmin, isGerente])
 
   // Calcular importes de una solicitud
   const calcImportes = (s: any) => {
@@ -191,6 +197,7 @@ export default function MscListPage() {
     }
 
     // Crear workbook y agregar datos con encabezados
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([headers, ...excelData])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'MSC Solicitudes')

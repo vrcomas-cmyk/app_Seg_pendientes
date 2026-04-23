@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 const API_URL = import.meta.env.VITE_API_URL
-import * as XLSX from 'xlsx'
 import { parseCSVText, readFileAsText } from '../../utils/parseCSV'
 import toast from 'react-hot-toast'
 
@@ -54,6 +53,7 @@ export default function CrmSuggestionsImportPage() {
       return parseCSVText(text)
     }
     const buf = await file.arrayBuffer()
+    const XLSX = await import('xlsx')
     const wb = XLSX.read(buf, { type: 'array', cellDates: false, dense: true })
     const ws = wb.Sheets[wb.SheetNames[0]]
     return XLSX.utils.sheet_to_json(ws, { defval: '' })

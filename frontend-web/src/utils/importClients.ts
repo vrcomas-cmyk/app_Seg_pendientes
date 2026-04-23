@@ -1,5 +1,3 @@
-import * as XLSX from 'xlsx'
-
 interface RawRow {
   Solicitante?: string; Destinatario?: string; 'Razón Social'?: string;
   RFC?: string; Población?: string; Estado?: string; País?: string;
@@ -40,7 +38,8 @@ const splitEmails = (v?: string): string[] => {
   return v.toString().split(/;\s*/).map(x => x.trim()).filter(x => x.includes('@'))
 }
 
-export function parseExcelFile(file: File): Promise<ClientImport[]> {
+export async function parseExcelFile(file: File): Promise<ClientImport[]> {
+  const XLSX = await import('xlsx')
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {

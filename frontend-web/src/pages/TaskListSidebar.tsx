@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 
 function daysDiff(date: string) {
@@ -28,31 +29,24 @@ interface Props {
 }
 
 export default function TaskListSidebar({ activeId }: Props) {
-  const [tasks, setTasks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todos' | 'alta' | 'media' | 'baja' | 'completados'>('todos')
   const [search, setSearch] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const user = await getCachedUser()
-    if (!user) { setLoading(false); return }
-    const { data } = await supabase.from('tasks')
-      .select('*')
-      .eq('created_by', user.id)
-      .order('due_date', { ascending: true })
-    setTasks(data ?? [])
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  // Refrescar lista si navegamos y hubo cambios en otro panel
-  useEffect(() => {
-    const handler = () => load()
-    window.addEventListener('focus', handler)
-    return () => window.removeEventListener('focus', handler)
-  }, [load])
+  // Lista de pendientes del usuario — cache de 30s + refetch on focus (global default).
+  // Se invalida automáticamente cuando TaskDetailPage llama a
+  // queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  const { data: tasks = [], isLoading: loading } = useQuery<any[]>({
+    queryKey: ['tasks', 'sidebar'],
+    queryFn: async () => {
+      const user = await getCachedUser()
+      if (!user) return []
+      const { data } = await supabase.from('tasks')
+        .select('*')
+        .eq('created_by', user.id)
+        .order('due_date', { ascending: true })
+      return data ?? []
+    },
+  })
 
   const today = new Date(); today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]

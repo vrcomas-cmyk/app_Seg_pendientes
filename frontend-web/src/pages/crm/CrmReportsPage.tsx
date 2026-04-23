@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, getCachedUser } from '../../lib/supabase'
 import toast from 'react-hot-toast'
-import * as XLSX from 'xlsx'
 
 const PAGE_SIZE = 500
 
@@ -283,7 +282,7 @@ export default function CrmReportsPage() {
   // Demand load: don't fire query until user provides at least one filter
   const [hasSearched, setHasSearched] = useState(false)
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const cols = tab === 'suggestions' ? SUGG_COLS : CONS_COLS
     const filteredRows = rows.filter(row => {
       return Object.entries(colFilters).every(([key, val]) => {
@@ -293,6 +292,7 @@ export default function CrmReportsPage() {
     })
     const headers = cols.map(c => c.label)
     const data = filteredRows.map(row => cols.map(c => row[c.key] ?? ''))
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
     // Autowidth
     ws['!cols'] = headers.map((_, i) => ({

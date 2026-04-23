@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import * as XLSX from 'xlsx'
 import { parseCSVText, readFileAsText } from '../../utils/parseCSV'
 import toast from 'react-hot-toast'
 import CrmSuggestionsImportPage from './CrmSuggestionsImportPage'
@@ -107,6 +106,7 @@ function InventarioGeneralCard() {
     setCount(null)
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buf, { type: 'array', cellDates: true })
 
       // Busca hoja "sheets1" o la primera disponible
@@ -238,6 +238,7 @@ function CortaCaducidadCard() {
     setCount(null)
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buf, { type: 'array', cellDates: true })
 
       // Buscar específicamente hoja "Corta caducidad"
@@ -386,6 +387,7 @@ function DeliveriesImport() {
         rawData = [keys, ...parsed.map(r => keys.map(k => r[k]))]
       } else {
         const buf = await file.arrayBuffer()
+        const XLSX = await import('xlsx')
         const wb = XLSX.read(buf, { type: 'array', cellDates: true })
         const ws = wb.Sheets[wb.SheetNames[0]]
         rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) as any[][]

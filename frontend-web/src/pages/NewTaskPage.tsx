@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
 import DescriptionEditor from '../components/DescriptionEditor'
@@ -261,6 +262,7 @@ function StepRow({
 
 export default function NewTaskPage() {
   const nav = useNavigate()
+  const queryClient = useQueryClient()
   const { createEvent, connectGoogle } = useCalendar()
   const [taskId] = useState(() => crypto.randomUUID())
 
@@ -533,6 +535,8 @@ export default function NewTaskPage() {
 
       saveSolicitante(form.requested_by)
       toast.success('Pendiente creado')
+      // Invalidar cache del sidebar para que el pendiente aparezca al instante
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
       nav(`/tasks/${taskId}`)
     } catch (err: any) {
       toast.error(err.message ?? 'Error al guardar')
