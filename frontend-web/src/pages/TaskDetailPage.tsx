@@ -559,11 +559,17 @@ export default function TaskDetailPage() {
               <div className="mt-3 border-t border-gray-100 pt-3">
                 <p className="text-xs text-gray-500 mb-2">Pegar captura</p>
                 <PasteImageUploader taskId={task.id} mode="zone"
-                  onUploaded={async (url, name) => {
+                  onUploaded={async (img) => {
                     try {
                       const user = await getCachedUser()
                       const { error } = await supabase.from('attachments').insert({
-                        task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                        task_id: task.id,
+                        filename: img.name,
+                        file_url: img.url,
+                        file_path: img.path,
+                        file_type: img.type,
+                        file_size_kb: Math.round(img.size / 1024),
+                        uploaded_by: user?.id,
                       })
                       if (error) throw error
                       loadAttachments()
@@ -686,8 +692,13 @@ export default function TaskDetailPage() {
                     // Batch insert (1 request) en vez de loop serial
                     if (images.length > 0) {
                       const rows = images.map(img => ({
-                        task_id: task.id, url: img.url, name: img.name,
-                        type: 'image', created_by: user?.id,
+                        task_id: task.id,
+                        filename: img.name,
+                        file_url: img.url,
+                        file_path: img.path,
+                        file_type: img.type,
+                        file_size_kb: Math.round(img.size / 1024),
+                        uploaded_by: user?.id,
                       }))
                       const { error: attErr } = await supabase.from('attachments').insert(rows)
                       if (attErr) {
@@ -755,11 +766,17 @@ export default function TaskDetailPage() {
                 <div className="border-t border-gray-100 pt-3">
                   <p className="text-xs text-gray-400 mb-2">Pegar captura</p>
                   <PasteImageUploader taskId={task.id} mode="zone"
-                    onUploaded={async (url, name) => {
+                    onUploaded={async (img) => {
                       try {
                         const user = await getCachedUser()
                         const { error } = await supabase.from('attachments').insert({
-                          task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                          task_id: task.id,
+                          filename: img.name,
+                          file_url: img.url,
+                          file_path: img.path,
+                          file_type: img.type,
+                          file_size_kb: Math.round(img.size / 1024),
+                          uploaded_by: user?.id,
                         })
                         if (error) throw error
                         loadAttachments()
