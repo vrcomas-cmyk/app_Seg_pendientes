@@ -54,6 +54,7 @@ export default function TaskListSidebar({ activeId }: Props) {
   const activeTasks = tasks.filter(t => t.status !== 'completado')
   const completedTasks = tasks.filter(t => t.status === 'completado')
   const overdue = activeTasks.filter(t => t.due_date && t.due_date < todayStr)
+  const dueToday = activeTasks.filter(t => t.due_date === todayStr)
 
   const filteredTasks = tasks.filter(t => {
     if (filter === 'completados') return t.status === 'completado'
@@ -69,14 +70,23 @@ export default function TaskListSidebar({ activeId }: Props) {
       t.description?.toLowerCase().includes(s)
   })
 
+  // Score de urgencia: cuanto más alto, más arriba.
+  //   score = -dias_hasta_vencimiento * 10  +  peso_prioridad
+  //   alta=3, media=2, baja=1
+  //   sin fecha → score muy bajo (al final)
+  const PRIORITY_WEIGHT: Record<string, number> = { alta: 3, media: 2, baja: 1 }
+  const urgencyScore = (t: any) => {
+    if (!t.due_date) return -9999 + (PRIORITY_WEIGHT[t.priority] ?? 0)
+    const days = daysDiff(t.due_date)
+    return -days * 10 + (PRIORITY_WEIGHT[t.priority] ?? 0)
+  }
+
   const sorted = [...filteredTasks].sort((a, b) => {
+    // Completados al final
     if (a.status === 'completado' && b.status !== 'completado') return 1
     if (b.status === 'completado' && a.status !== 'completado') return -1
-    const da = a.due_date ? daysDiff(a.due_date) : 999
-    const db = b.due_date ? daysDiff(b.due_date) : 999
-    if (da < 0 && db >= 0) return -1
-    if (db < 0 && da >= 0) return 1
-    return da - db
+    // Por urgencia (descendente: mayor score primero)
+    return urgencyScore(b) - urgencyScore(a)
   })
 
   return (
@@ -89,6 +99,9 @@ export default function TaskListSidebar({ activeId }: Props) {
             {activeTasks.length} activos
             {overdue.length > 0 && (
               <span className="text-red-500 font-medium"> · {overdue.length} vencidos</span>
+            )}
+            {dueToday.length > 0 && (
+              <span className="text-orange-500 font-medium"> · {dueToday.length} hoy</span>
             )}
           </p>
         </div>
@@ -159,6 +172,7 @@ export default function TaskListSidebar({ activeId }: Props) {
                       ? 'line-through text-gray-400'
                       : isActive ? 'text-teal-800' : 'text-gray-800'
                   }`}>
+                    {t.email_url && <span className="mr-1" title="Correo asociado">📧</span>}
                     {t.title}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
