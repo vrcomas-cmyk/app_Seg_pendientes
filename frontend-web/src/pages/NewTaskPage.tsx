@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 import { useCalendar } from '../hooks/useCalendar'
@@ -263,16 +263,30 @@ function StepRow({
 export default function NewTaskPage() {
   const nav = useNavigate()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const { createEvent, connectGoogle } = useCalendar()
   const [taskId] = useState(() => crypto.randomUUID())
 
+  // Pre-cargar desde query params (viene del bookmarklet de Gmail)
+  const initialEmailUrl     = searchParams.get('email_url') ?? ''
+  const initialEmailSubject = searchParams.get('email_subject') ?? ''
+  const initialEmailFrom    = searchParams.get('email_from') ?? ''
+
   const [form, setForm] = useState({
-    requested_by: '',
-    title: '',
+    requested_by: initialEmailFrom,
+    title: initialEmailSubject,
     description: '',
     priority: 'media',
     due_date: suggestDate('media'),
   })
+
+  // Correo asociado (opcional)
+  const [email, setEmail] = useState({
+    url:     initialEmailUrl,
+    subject: initialEmailSubject,
+    from:    initialEmailFrom,
+  })
+  const [emailExpanded, setEmailExpanded] = useState(Boolean(initialEmailUrl))
 
   const [solicitantes, setSolicitantes] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -486,6 +500,9 @@ export default function NewTaskPage() {
         requested_by: form.requested_by.trim(),
         due_date: form.due_date,
         created_by: user?.id,
+        email_url:     email.url.trim()     || null,
+        email_subject: email.subject.trim() || null,
+        email_from:    email.from.trim()    || null,
       })
       if (taskErr) throw new Error('No se pudo crear el pendiente: ' + taskErr.message)
 
@@ -649,6 +666,61 @@ export default function NewTaskPage() {
                 value={form.due_date}
                 onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
             </div>
+          </div>
+
+          {/* ======= CORREO RELACIONADO (colapsable) ======= */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <button type="button"
+              onClick={() => setEmailExpanded(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50">
+              <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                📧 Correo relacionado
+                {email.url && <span className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">asociado</span>}
+              </span>
+              <span className="text-gray-400 text-xs">{emailExpanded ? 'Ocultar' : 'Mostrar'}</span>
+            </button>
+            {emailExpanded && (
+              <div className="px-4 pb-4 pt-1 space-y-3 border-t border-gray-100">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Link al correo <span className="text-gray-400">(Gmail)</span>
+                  </label>
+                  <input type="url"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 font-mono"
+                    placeholder="https://mail.google.com/mail/u/0/#inbox/..."
+                    value={email.url}
+                    onChange={e => setEmail(p => ({ ...p, url: e.target.value }))} />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Abre el correo en Gmail y copia la URL de la barra de direcciones.
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Asunto</label>
+                    <input type="text"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                      placeholder="Re: Pedido atrasado"
+                      value={email.subject}
+                      onChange={e => setEmail(p => ({ ...p, subject: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Remitente</label>
+                    <input type="text"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                      placeholder="Juan Pérez"
+                      value={email.from}
+                      onChange={e => setEmail(p => ({ ...p, from: e.target.value }))} />
+                  </div>
+                </div>
+                {email.url && (
+                  <button type="button"
+                    onClick={() => setEmail({ url: '', subject: '', from: '' })}
+                    className="text-xs text-red-500 hover:text-red-600">
+                    Quitar correo asociado
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

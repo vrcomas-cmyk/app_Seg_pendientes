@@ -45,6 +45,16 @@ export default function TaskDetailPage() {
   const [activeTab, setActiveTab] = useState<'pasos'|'historial'|'adjuntos'>('pasos')
   const [historyLimit, setHistoryLimit] = useState(5)
   const [showAttachSection, setShowAttachSection] = useState(false)
+
+  // Modal para editar correo asociado
+  const [emailModal, setEmailModal] = useState(false)
+  const [emailForm, setEmailForm] = useState({ url: '', subject: '', from: '' })
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  // Edición inline de prioridad / fecha límite
+  const [editingPriority, setEditingPriority] = useState(false)
+  const [editingDueDate, setEditingDueDate] = useState(false)
+  const [savingField, setSavingField] = useState(false)
   const historyEndRef = useRef<HTMLDivElement>(null)
 
   const loadAttachments = async () => {
@@ -157,6 +167,55 @@ export default function TaskDetailPage() {
     const result = await cancelEvent(id!)
     if (result.success) { toast.success('Evento eliminado'); load() }
     else toast.error(result.error ?? 'Error')
+  }
+
+  const openEmailModal = () => {
+    setEmailForm({
+      url:     task?.email_url     ?? '',
+      subject: task?.email_subject ?? '',
+      from:    task?.email_from    ?? '',
+    })
+    setEmailModal(true)
+  }
+
+  const saveEmail = async () => {
+    setSavingEmail(true)
+    try {
+      const { error } = await supabase.from('tasks').update({
+        email_url:     emailForm.url.trim()     || null,
+        email_subject: emailForm.subject.trim() || null,
+        email_from:    emailForm.from.trim()    || null,
+      }).eq('id', id)
+      if (error) throw error
+      toast.success(emailForm.url ? 'Correo asociado' : 'Correo quitado')
+      setEmailModal(false)
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      load()
+    } catch (err: any) {
+      console.error('Error guardando correo:', err)
+      toast.error(err?.message ?? 'No se pudo guardar')
+    } finally {
+      setSavingEmail(false)
+    }
+  }
+
+  // Actualizar un campo simple de la task (priority, due_date, etc.)
+  const updateField = async (field: 'priority' | 'due_date', value: string) => {
+    setSavingField(true)
+    try {
+      const { error } = await supabase.from('tasks').update({ [field]: value }).eq('id', id)
+      if (error) throw error
+      toast.success(field === 'priority' ? 'Prioridad actualizada' : 'Fecha actualizada')
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      load()
+      setEditingPriority(false)
+      setEditingDueDate(false)
+    } catch (err: any) {
+      console.error('Error actualizando campo:', err)
+      toast.error(err?.message ?? 'No se pudo actualizar')
+    } finally {
+      setSavingField(false)
+    }
   }
 
   const renderComment = (text: string) => {
@@ -301,22 +360,81 @@ export default function TaskDetailPage() {
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 leading-tight">{task.title}</h1>
 
             {/* Chips — scroll horizontal en mobile */}
-            <div className="flex gap-2 overflow-x-auto pb-1 mb-3 -mx-1 px-1">
-              <span className={`flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium border ${priorityColor[task.priority]}`}>
-                {task.priority}
-              </span>
+            <div className="flex gap-2 overflow-x-auto pb-1 mb-3 -mx-1 px-1 items-center">
+              {/* Prioridad — click para editar */}
+              {editingPriority ? (
+                <select
+                  autoFocus
+                  disabled={savingField}
+                  defaultValue={task.priority}
+                  onChange={e => updateField('priority', e.target.value)}
+                  onBlur={() => setEditingPriority(false)}
+                  className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-full font-medium border outline-none ${priorityColor[task.priority]}`}>
+                  <option value="alta">alta</option>
+                  <option value="media">media</option>
+                  <option value="baja">baja</option>
+                </select>
+              ) : (
+                <button onClick={() => setEditingPriority(true)}
+                  title="Click para editar"
+                  className={`flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium border hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition ${priorityColor[task.priority]}`}>
+                  {task.priority}
+                </button>
+              )}
+
               <span className={`flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium ${statusColor[task.status] ?? 'bg-gray-100 text-gray-500'}`}>
                 {task.status?.replace('_',' ')}
               </span>
-              <span className={`flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                Vence: {task.due_date}
-              </span>
+
+              {/* Fecha límite — click para editar */}
+              {editingDueDate ? (
+                <input type="date"
+                  autoFocus
+                  disabled={savingField}
+                  defaultValue={task.due_date ?? ''}
+                  onChange={e => e.target.value && updateField('due_date', e.target.value)}
+                  onBlur={() => setEditingDueDate(false)}
+                  className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-full font-medium border outline-none ${isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`} />
+              ) : (
+                <button onClick={() => setEditingDueDate(true)}
+                  title="Click para editar"
+                  className={`flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                  Vence: {task.due_date || '—'}
+                </button>
+              )}
+
               {hasCalendarEvent && (
                 <span className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-full font-medium bg-blue-100 text-blue-600">
                   Cal: {new Date(activeEvent.event_date).toLocaleDateString('es-MX')}
                 </span>
               )}
             </div>
+
+            {/* Bloque correo asociado — discreto arriba de la descripción */}
+            {task.email_url ? (
+              <div className="mb-3 flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 text-sm">
+                <span className="text-base flex-shrink-0">📧</span>
+                <div className="min-w-0 flex-1 truncate">
+                  {task.email_subject && <span className="font-medium text-gray-700">{task.email_subject}</span>}
+                  {task.email_subject && task.email_from && <span className="text-gray-400"> — </span>}
+                  {task.email_from && <span className="text-gray-500">de {task.email_from}</span>}
+                  {!task.email_subject && !task.email_from && <span className="text-gray-500">Correo asociado</span>}
+                </div>
+                <a href={task.email_url} target="_blank" rel="noopener noreferrer"
+                  className="flex-shrink-0 text-xs font-medium text-teal-700 hover:text-teal-800 underline underline-offset-2">
+                  Abrir
+                </a>
+                <button type="button" onClick={openEmailModal}
+                  className="flex-shrink-0 text-xs text-gray-400 hover:text-gray-600" title="Editar">
+                  ✎
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={openEmailModal}
+                className="mb-3 text-xs text-gray-400 hover:text-teal-600 flex items-center gap-1">
+                <span>📧</span><span>Asociar correo</span>
+              </button>
+            )}
 
             {task.description && (
               <div className="text-sm text-gray-600 mb-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100 whitespace-pre-wrap break-words">
@@ -441,11 +559,17 @@ export default function TaskDetailPage() {
               <div className="mt-3 border-t border-gray-100 pt-3">
                 <p className="text-xs text-gray-500 mb-2">Pegar captura</p>
                 <PasteImageUploader taskId={task.id} mode="zone"
-                  onUploaded={async (url, name) => {
+                  onUploaded={async (img) => {
                     try {
                       const user = await getCachedUser()
                       const { error } = await supabase.from('attachments').insert({
-                        task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                        task_id: task.id,
+                        filename: img.name,
+                        file_url: img.url,
+                        file_path: img.path,
+                        file_type: img.type,
+                        file_size_kb: Math.round(img.size / 1024),
+                        uploaded_by: user?.id,
                       })
                       if (error) throw error
                       loadAttachments()
@@ -568,8 +692,13 @@ export default function TaskDetailPage() {
                     // Batch insert (1 request) en vez de loop serial
                     if (images.length > 0) {
                       const rows = images.map(img => ({
-                        task_id: task.id, url: img.url, name: img.name,
-                        type: 'image', created_by: user?.id,
+                        task_id: task.id,
+                        filename: img.name,
+                        file_url: img.url,
+                        file_path: img.path,
+                        file_type: img.type,
+                        file_size_kb: Math.round(img.size / 1024),
+                        uploaded_by: user?.id,
                       }))
                       const { error: attErr } = await supabase.from('attachments').insert(rows)
                       if (attErr) {
@@ -637,11 +766,17 @@ export default function TaskDetailPage() {
                 <div className="border-t border-gray-100 pt-3">
                   <p className="text-xs text-gray-400 mb-2">Pegar captura</p>
                   <PasteImageUploader taskId={task.id} mode="zone"
-                    onUploaded={async (url, name) => {
+                    onUploaded={async (img) => {
                       try {
                         const user = await getCachedUser()
                         const { error } = await supabase.from('attachments').insert({
-                          task_id: task.id, url, name, type: 'image', created_by: user?.id,
+                          task_id: task.id,
+                          filename: img.name,
+                          file_url: img.url,
+                          file_path: img.path,
+                          file_type: img.type,
+                          file_size_kb: Math.round(img.size / 1024),
+                          uploaded_by: user?.id,
                         })
                         if (error) throw error
                         loadAttachments()
@@ -657,6 +792,70 @@ export default function TaskDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* ======= MODAL EDITAR CORREO ASOCIADO ======= */}
+      {emailModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => !savingEmail && setEmailModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
+            onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-800 mb-1 flex items-center gap-2">
+              📧 Correo asociado
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Abre el correo en Gmail y copia la URL de la barra de direcciones.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Link al correo</label>
+                <input type="url"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 font-mono"
+                  placeholder="https://mail.google.com/mail/u/0/#inbox/..."
+                  value={emailForm.url}
+                  onChange={e => setEmailForm(p => ({ ...p, url: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Asunto</label>
+                <input type="text"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  placeholder="Re: Pedido atrasado"
+                  value={emailForm.subject}
+                  onChange={e => setEmailForm(p => ({ ...p, subject: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Remitente</label>
+                <input type="text"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                  placeholder="Juan Pérez"
+                  value={emailForm.from}
+                  onChange={e => setEmailForm(p => ({ ...p, from: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-between mt-5">
+              {task?.email_url && (
+                <button type="button" disabled={savingEmail}
+                  onClick={() => setEmailForm({ url: '', subject: '', from: '' })}
+                  className="text-sm text-red-500 hover:text-red-600 disabled:opacity-50">
+                  Quitar correo
+                </button>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <button type="button" disabled={savingEmail}
+                  onClick={() => setEmailModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="button" disabled={savingEmail} onClick={saveEmail}
+                  className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">
+                  {savingEmail ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

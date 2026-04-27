@@ -11,6 +11,7 @@ import RouteGuard from './components/RouteGuard'
 const TasksLayout       = lazy(() => import('./pages/TasksLayout'))
 const NewTaskPage       = lazy(() => import('./pages/NewTaskPage'))
 const TaskDetailPage    = lazy(() => import('./pages/TaskDetailPage'))
+const FromEmailPage     = lazy(() => import('./pages/FromEmailPage'))
 const ProfilePage       = lazy(() => import('./pages/ProfilePage'))
 
 // CRM
@@ -91,6 +92,7 @@ export default function App() {
           {/* /tasks con split view: lista izquierda + detalle derecha */}
           <Route path="/tasks" element={<TasksLayout />}>
             <Route index element={null /* placeholder lo renderiza TasksLayout */} />
+            <Route path="from-email" element={<FromEmailPage />} />
             <Route path="new" element={<NewTaskPage />} />
             <Route path=":id" element={<TaskDetailPage />} />
           </Route>

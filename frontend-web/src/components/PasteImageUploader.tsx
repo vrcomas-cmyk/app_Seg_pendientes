@@ -6,11 +6,14 @@ import toast from 'react-hot-toast'
 interface UploadedImage {
   url: string
   name: string
+  path: string
+  size: number
+  type: string
 }
 
 interface Props {
   taskId: string
-  onUploaded?: (url: string, name: string) => void
+  onUploaded?: (img: UploadedImage) => void
   className?: string
   placeholder?: string
   // Modo comentario: incluye textarea + paste
@@ -35,14 +38,14 @@ export default function PasteImageUploader({
     }
     setUploading(true)
     const ext = file.name.split('.').pop() ?? 'png'
-    const name = `${taskId}/${Date.now()}.${ext}`
+    const path = `${taskId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage
       .from('attachments')
-      .upload(name, file, { contentType: file.type, upsert: false })
+      .upload(path, file, { contentType: file.type, upsert: false })
     if (error) { toast.error('Error al subir imagen: ' + error.message); setUploading(false); return null }
-    const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(name)
+    const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(path)
     setUploading(false)
-    return { url: publicUrl, name: file.name }
+    return { url: publicUrl, name: file.name, path, size: file.size, type: file.type }
   }, [taskId])
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
@@ -57,7 +60,7 @@ export default function PasteImageUploader({
     toast.dismiss('img-upload')
     if (uploaded) {
       setImages(prev => [...prev, uploaded])
-      onUploaded?.(uploaded.url, uploaded.name)
+      onUploaded?.(uploaded)
       toast.success('Imagen pegada')
     }
   }, [uploadImage, onUploaded])
@@ -67,7 +70,7 @@ export default function PasteImageUploader({
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
     for (const file of files) {
       const uploaded = await uploadImage(file)
-      if (uploaded) { setImages(prev => [...prev, uploaded]); onUploaded?.(uploaded.url, uploaded.name) }
+      if (uploaded) { setImages(prev => [...prev, uploaded]); onUploaded?.(uploaded) }
     }
   }, [uploadImage, onUploaded])
 
@@ -75,7 +78,7 @@ export default function PasteImageUploader({
     const files = Array.from(e.target.files ?? [])
     for (const file of files) {
       const uploaded = await uploadImage(file)
-      if (uploaded) { setImages(prev => [...prev, uploaded]); onUploaded?.(uploaded.url, uploaded.name) }
+      if (uploaded) { setImages(prev => [...prev, uploaded]); onUploaded?.(uploaded) }
     }
     e.target.value = ''
   }

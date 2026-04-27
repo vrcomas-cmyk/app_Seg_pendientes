@@ -5,13 +5,14 @@ export default function TasksLayout() {
   const location = useLocation()
   const detailMatch = useMatch('/tasks/:id')
   const newMatch = useMatch('/tasks/new')
+  const fromEmailMatch = useMatch('/tasks/from-email')
 
-  // "new" es una ruta especial; para el highlight lo tratamos como "sin activo"
-  const activeId = detailMatch && detailMatch.params.id !== 'new'
+  // "new" y "from-email" son rutas especiales; para el highlight los tratamos como "sin activo"
+  const activeId = detailMatch && detailMatch.params.id !== 'new' && detailMatch.params.id !== 'from-email'
     ? detailMatch.params.id ?? null
     : null
 
-  const hasRightPanel = Boolean(detailMatch || newMatch)
+  const hasRightPanel = Boolean(detailMatch || newMatch || fromEmailMatch)
   const isIndex = location.pathname === '/tasks' || location.pathname === '/tasks/'
 
   return (
