@@ -20,11 +20,32 @@ const supabaseAuth = createClient(
 
 async function main() {
   await app.register(cors, {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      process.env.FRONTEND_URL!
-    ],
+    origin: (origin, cb) => {
+      // Permitir requests sin origin (curl, postman, server-to-server)
+      if (!origin) return cb(null, true)
+
+      // Lista de orígenes permitidos
+      const allowedExact = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        process.env.FRONTEND_URL,
+      ].filter(Boolean) as string[]
+
+      // Match exacto
+      if (allowedExact.includes(origin)) return cb(null, true)
+
+      // Permitir cualquier preview deploy de Vercel del proyecto
+      // (URLs con formato https://app-seg-pendientes-*.vercel.app)
+      const vercelPreview = /^https:\/\/app-seg-pendientes(-[a-z0-9]+)*\.vercel\.app$/
+      if (vercelPreview.test(origin)) return cb(null, true)
+
+      // Permitir Codespaces (URL dinámica de github.dev)
+      const codespace = /^https:\/\/[a-z0-9-]+\.app\.github\.dev$/
+      if (codespace.test(origin)) return cb(null, true)
+
+      // Bloqueado
+      cb(new Error('Origen no permitido por CORS: ' + origin), false)
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
