@@ -354,6 +354,27 @@ export default function NewTaskPage() {
     setStepsExpanded(true)
   }
 
+  // Genera subtareas a partir de las líneas de la descripción que empiezan con "-"
+  // Ej: "Necesitamos vender sal:\n-Revisar clientes\n-Marcar y pedir info" => 2 subtareas
+  const addStepsFromDescription = () => {
+    const titles = form.description.split('\n')
+      .filter(l => /^\s*[-–•*]\s*\S/.test(l))
+      .map(l => l.replace(/^\s*[-–•*]\s*/, '').trim())
+      .filter(Boolean)
+    if (titles.length === 0) {
+      toast.error('No hay líneas que empiecen con «-» en la descripción')
+      return
+    }
+    const nuevos: StepDraft[] = titles.map(t => ({
+      tmpId: crypto.randomUUID(),
+      title: t, description: '', due_date: '', assigned_to: '',
+      imagePaths: [],
+    }))
+    setSteps(s => [...nuevos, ...s])
+    setStepsExpanded(true)
+    toast.success(`${nuevos.length} subtarea(s) creada(s)`)
+  }
+
   const updateStep = (tmpId: string, patch: Partial<StepDraft>) => {
     setSteps(s => s.map(st => st.tmpId === tmpId ? { ...st, ...patch } : st))
     if (titleErrorId === tmpId && patch.title !== undefined && patch.title.trim()) {
@@ -745,10 +766,17 @@ export default function NewTaskPage() {
                 <span className="text-xs text-gray-400">— opcional</span>
               )}
             </button>
-            <button type="button" onClick={addStep}
-              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 flex-shrink-0">
-              + Agregar paso
-            </button>
+            <div className="flex gap-2 flex-shrink-0">
+              <button type="button" onClick={addStepsFromDescription}
+                title="Crea una subtarea por cada línea de la descripción que empiece con «-»"
+                className="border border-teal-200 text-teal-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-50">
+                ↳ Desde descripción («-»)
+              </button>
+              <button type="button" onClick={addStep}
+                className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700">
+                + Agregar paso
+              </button>
+            </div>
           </div>
 
           {stepsExpanded && (

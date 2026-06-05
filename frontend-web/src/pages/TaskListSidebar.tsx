@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase, getCachedUser } from '../lib/supabase'
 
@@ -29,6 +29,7 @@ interface Props {
 }
 
 export default function TaskListSidebar({ activeId }: Props) {
+  const navigate = useNavigate()
   const [filter, setFilter] = useState<'todos' | 'alta' | 'media' | 'baja' | 'completados'>('todos')
   const [search, setSearch] = useState('')
 
@@ -88,6 +89,26 @@ export default function TaskListSidebar({ activeId }: Props) {
     // Por urgencia (descendente: mayor score primero)
     return urgencyScore(b) - urgencyScore(a)
   })
+
+  // Navegación con teclado: ↑/↓ mueven entre pendientes (estilo Gmail).
+  // Se ignora si el foco está en un campo de texto (p. ej. el buscador).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      const el = document.activeElement as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
+      if (sorted.length === 0) return
+      e.preventDefault()
+      const idx = sorted.findIndex(t => t.id === activeId)
+      let next = idx === -1 ? 0 : idx + (e.key === 'ArrowDown' ? 1 : -1)
+      next = Math.max(0, Math.min(sorted.length - 1, next))
+      const target = sorted[next]
+      if (target && target.id !== activeId) navigate(`/tasks/${target.id}`)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sorted, activeId, navigate])
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-[calc(100vh-120px)] sticky top-20">
